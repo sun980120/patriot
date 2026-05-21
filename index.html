@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>패트리어트 스마트 회비 관리 웹 애플리케이션</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: '#f5f7f2',
+                100: '#e7ecdf',
+                200: '#d1dcc2',
+                300: '#b6c89e',
+                400: '#97b173',
+                500: '#799651',
+                600: '#617941',
+                700: '#4c6035',
+                800: '#3f4f2d',
+                900: '#354228',
+              },
+            },
+            boxShadow: {
+              soft: '0 20px 45px rgba(53, 66, 40, 0.12)',
+            },
+            fontFamily: {
+              sans: ['Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', 'sans-serif'],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(246, 231, 161, 0.35), transparent 25%),
+          radial-gradient(circle at top right, rgba(201, 219, 255, 0.35), transparent 22%),
+          linear-gradient(180deg, #f8faf6 0%, #eef3e8 100%);
+      }
+
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(14px);
+      }
+    </style>
+  </head>
+  <body class="min-h-screen text-slate-800">
+    <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <header class="glass-panel overflow-hidden rounded-[32px] border border-white/70 shadow-soft">
+        <div class="grid gap-8 px-6 py-8 lg:grid-cols-[1.15fr_0.85fr] lg:px-8">
+          <div>
+            <p class="mb-3 inline-flex rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-brand-700">
+              Patriot Club Finance
+            </p>
+            <h1 class="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
+              패트리어트 스마트 회비 관리 웹 애플리케이션
+            </h1>
+            <p class="mt-4 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">
+              로그인, 관리자 승인, 연도별 회비 관리, 기타 세입과 지출 관리, 회원별 납부 조회를 한 화면 프로토타입으로 정리했습니다.
+            </p>
+            <div class="mt-5 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+              <span class="rounded-full bg-white px-3 py-2">2026년은 5월 시작</span>
+              <span class="rounded-full bg-white px-3 py-2">2027년부터 1월~12월</span>
+              <span class="rounded-full bg-white px-3 py-2">간사 원클릭 납부 토글</span>
+              <span class="rounded-full bg-white px-3 py-2">회원 승인 후 활성화</span>
+            </div>
+          </div>
+
+          <div class="rounded-[28px] bg-slate-900 px-5 py-5 text-white shadow-soft">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="text-sm font-semibold text-white/70">로그인</p>
+                <p id="authStatusText" class="mt-1 text-sm text-white"></p>
+              </div>
+              <button id="logoutButton" class="hidden rounded-2xl border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">
+                로그아웃
+              </button>
+            </div>
+
+            <div id="loginPanel" class="mt-4 space-y-3">
+              <label class="block">
+                <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/60">계정 선택</span>
+                <select id="loginSelect" class="w-full rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white focus:border-brand-300 focus:outline-none"></select>
+              </label>
+              <button id="loginButton" class="w-full rounded-2xl bg-brand-400 px-4 py-3 text-sm font-bold text-slate-900 transition hover:bg-brand-300">
+                로그인
+              </button>
+              <p class="text-xs leading-5 text-white/65">
+                관리자 계정은 승인, 회비 체크, 세입/지출 추가, 새 연도 개설 권한을 가집니다. 일반 회원은 본인 납부 현황만 확인할 수 있습니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="mt-8 space-y-8">
+        <section class="grid gap-4 md:grid-cols-3">
+          <article class="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft">
+            <p class="text-sm font-semibold text-slate-500" id="incomeCardLabel"></p>
+            <p class="mt-4 text-3xl font-black text-slate-900" id="incomeCardValue"></p>
+            <p class="mt-2 text-sm text-slate-500">회비 + 기타 수입</p>
+          </article>
+          <article class="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft">
+            <p class="text-sm font-semibold text-slate-500" id="expenseCardLabel"></p>
+            <p class="mt-4 text-3xl font-black text-slate-900" id="expenseCardValue"></p>
+            <p class="mt-2 text-sm text-slate-500">선택 연도 지출 합계</p>
+          </article>
+          <article class="rounded-[28px] bg-brand-700 p-5 text-white shadow-soft">
+            <p class="text-sm font-semibold text-white/70" id="balanceCardLabel"></p>
+            <p class="mt-4 text-3xl font-black" id="balanceCardValue"></p>
+            <p class="mt-2 text-sm text-white/70">선택 연도 현재 잔액</p>
+          </article>
+        </section>
+
+        <section class="grid gap-8 xl:grid-cols-[1.55fr_0.95fr]">
+          <div class="space-y-8">
+            <section class="glass-panel rounded-[32px] border border-white/70 p-6 shadow-soft">
+              <div class="flex flex-col gap-4 border-b border-slate-200/80 pb-5 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p class="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Finance Control</p>
+                  <h2 class="mt-2 text-2xl font-black text-slate-900">연도별 회비 관리</h2>
+                  <p id="tableDescription" class="mt-2 text-sm text-slate-500"></p>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-[1fr_auto] lg:min-w-[330px]">
+                  <label class="block">
+                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">연도 선택</span>
+                    <select id="yearSelect" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"></select>
+                  </label>
+                  <div id="newYearTools" class="hidden gap-3 sm:self-end">
+                    <input id="newYearInput" type="number" min="2026" step="1" placeholder="예: 2027" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+                    <button id="addYearButton" class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800">
+                      새 연도 개설
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 flex flex-wrap items-center gap-3 text-sm">
+                <span class="rounded-full bg-slate-100 px-4 py-2 text-slate-600">표시 월: <span id="activeMonthsLabel" class="font-semibold text-slate-900"></span></span>
+                <span class="rounded-full bg-amber-100 px-4 py-2 text-amber-900">준회원 행 강조</span>
+                <span class="rounded-full bg-emerald-100 px-4 py-2 text-emerald-900">간사는 회비 면제</span>
+              </div>
+
+              <div class="mt-6 overflow-hidden rounded-[24px] border border-slate-200 bg-white">
+                <div class="overflow-x-auto">
+                  <table class="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50">
+                      <tr id="membershipTableHead"></tr>
+                    </thead>
+                    <tbody id="membershipTableBody" class="divide-y divide-slate-100"></tbody>
+                  </table>
+                </div>
+              </div>
+              <p class="mt-4 text-xs leading-5 text-slate-500">
+                관리자 모드에서는 월별 칸을 클릭하면 납부 완료와 미납이 토글됩니다. 회원 모드에서는 읽기 전용으로 표시됩니다.
+              </p>
+            </section>
+
+            <section id="adminOperations" class="hidden grid gap-8 lg:grid-cols-2">
+              <article class="glass-panel rounded-[32px] border border-white/70 p-6 shadow-soft">
+                <div class="flex items-end justify-between border-b border-slate-200/80 pb-4">
+                  <div>
+                    <p class="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Income</p>
+                    <h3 class="mt-2 text-xl font-black text-slate-900">기타 세입 관리</h3>
+                  </div>
+                  <span id="extraIncomeTotal" class="text-sm font-semibold text-slate-500"></span>
+                </div>
+                <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_140px_auto]">
+                  <input id="incomeLabelInput" type="text" placeholder="예: 찬조금" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+                  <input id="incomeAmountInput" type="number" min="0" placeholder="금액" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+                  <button id="addIncomeButton" class="rounded-2xl bg-brand-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-brand-700">추가</button>
+                </div>
+                <div id="incomeList" class="mt-4 space-y-3"></div>
+              </article>
+
+              <article class="glass-panel rounded-[32px] border border-white/70 p-6 shadow-soft">
+                <div class="flex items-end justify-between border-b border-slate-200/80 pb-4">
+                  <div>
+                    <p class="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Expense</p>
+                    <h3 class="mt-2 text-xl font-black text-slate-900">지출 관리</h3>
+                  </div>
+                  <span id="expenseTotal" class="text-sm font-semibold text-slate-500"></span>
+                </div>
+                <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_140px_auto]">
+                  <input id="expenseLabelInput" type="text" placeholder="예: 대관료" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+                  <input id="expenseAmountInput" type="number" min="0" placeholder="금액" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+                  <button id="addExpenseButton" class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800">추가</button>
+                </div>
+                <div id="expenseList" class="mt-4 space-y-3"></div>
+              </article>
+            </section>
+
+            <section id="memberReadOnlyTransactions" class="hidden grid gap-8 lg:grid-cols-2">
+              <article class="glass-panel rounded-[32px] border border-white/70 p-6 shadow-soft">
+                <div class="flex items-end justify-between border-b border-slate-200/80 pb-4">
+                  <div>
+                    <p class="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Income</p>
+                    <h3 class="mt-2 text-xl font-black text-slate-900">기타 세입</h3>
+                  </div>
+                  <span id="memberExtraIncomeTotal" class="text-sm font-semibold text-slate-500"></span>
+                </div>
+                <div id="memberIncomeList" class="mt-4 space-y-3"></div>
+              </article>
+
+              <article class="glass-panel rounded-[32px] border border-white/70 p-6 shadow-soft">
+                <div class="flex items-end justify-between border-b border-slate-200/80 pb-4">
+                  <div>
+                    <p class="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Expense</p>
+                    <h3 class="mt-2 text-xl font-black text-slate-900">지출 내역</h3>
+                  </div>
+                  <span id="memberExpenseTotal" class="text-sm font-semibold text-slate-500"></span>
+                </div>
+                <div id="memberExpenseList" class="mt-4 space-y-3"></div>
+              </article>
+            </section>
+          </div>
+
+          <aside class="space-y-8">
+            <section id="approvalPanel" class="hidden glass-panel rounded-[32px] border border-white/70 p-6 shadow-soft">
+              <p class="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Approval</p>
+              <h2 class="mt-2 text-2xl font-black text-slate-900">회원 승인 관리</h2>
+              <p class="mt-2 text-sm text-slate-500">가입 요청 회원을 승인하면 회비 관리 대상에 자동 포함됩니다.</p>
+              <div id="approvalList" class="mt-5 space-y-3"></div>
+            </section>
+
+            <section class="glass-panel rounded-[32px] border border-white/70 p-6 shadow-soft">
+              <p class="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Member Lookup</p>
+              <h2 class="mt-2 text-2xl font-black text-slate-900">회원별 납부 현황 조회</h2>
+              <p id="lookupDescription" class="mt-2 text-sm text-slate-500"></p>
+
+              <div class="mt-5 space-y-3">
+                <input id="memberSearchInput" type="text" placeholder="이름 검색 예: 박희주" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+                <div class="grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <select id="memberYearSelect" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"></select>
+                  <button id="memberSearchButton" class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800">조회</button>
+                </div>
+              </div>
+
+              <div id="memberLookupEmpty" class="mt-6 rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
+                이름을 입력하면 연도별 납부 현황을 확인할 수 있습니다.
+              </div>
+
+              <div id="memberLookupResult" class="mt-6 hidden space-y-6">
+                <div>
+                  <div class="flex items-center justify-between gap-3">
+                    <h3 id="memberResultName" class="text-xl font-black text-slate-900"></h3>
+                    <span id="memberResultType" class="rounded-full px-3 py-1 text-xs font-semibold"></span>
+                  </div>
+                  <p id="memberResultSummary" class="mt-2 text-sm text-slate-500"></p>
+                </div>
+
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">전체 연도 이력</p>
+                  <div id="memberTimeline" class="mt-3 space-y-3"></div>
+                </div>
+
+                <div>
+                  <div class="flex items-center justify-between">
+                    <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">선택 연도 상세</p>
+                    <span id="memberDetailYear" class="text-sm font-semibold text-slate-500"></span>
+                  </div>
+                  <div id="memberYearDetail" class="mt-3 grid gap-3 sm:grid-cols-2"></div>
+                </div>
+              </div>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const START_YEAR = 2026;
+      const formatCurrency = (value) =>
+        new Intl.NumberFormat('ko-KR', {
+          style: 'currency',
+          currency: 'KRW',
+          maximumFractionDigits: 0,
+        }).format(value);
+
+      const roleConfig = {
+        정회원: { fee: 20000, badge: 'bg-slate-100 text-slate-800' },
+        준회원: { fee: 10000, badge: 'bg-amber-100 text-amber-900' },
+        간사: { fee: 0, badge: 'bg-emerald-100 text-emerald-900' },
+      };
+
+      const users = [
+        { id: 'admin-1', name: '박희주', role: '간사', authRole: 'admin', status: 'approved' },
+        { id: 'admin-2', name: '남대우', role: '간사', authRole: 'admin', status: 'approved' },
+        { id: 'member-1', name: '홍우성', role: '정회원', authRole: 'member', status: 'approved' },
+        { id: 'member-2', name: '박시하', role: '정회원', authRole: 'member', status: 'approved' },
+        { id: 'member-3', name: '김하랑', role: '준회원', authRole: 'member', status: 'approved' },
+        { id: 'member-4', name: '김성현', role: '준회원', authRole: 'member', status: 'approved' },
+        { id: 'pending-1', name: '오준혁', role: '정회원', authRole: 'member', status: 'pending' },
+        { id: 'pending-2', name: '최신화', role: '준회원', authRole: 'member', status: 'pending' },
+      ];
+
+      const getVisibleMonths = (year) => (year === START_YEAR ? [5, 6, 7, 8, 9, 10, 11, 12] : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+
+      const buildMonthState = (months, paidMonths = []) =>
+        Object.fromEntries(months.map((month) => [month, { paid: paidMonths.includes(month) }]));
+
+      const getApprovedMembers = () => users.filter((user) => user.status === 'approved');
+
+      const seedYearRecords = () => ({
+        2026: {
+          months: getVisibleMonths(2026),
+          memberships: [
+            { year: 2026, userId: 'admin-1', months: buildMonthState(getVisibleMonths(2026)) },
+            { year: 2026, userId: 'admin-2', months: buildMonthState(getVisibleMonths(2026)) },
+            { year: 2026, userId: 'member-1', months: buildMonthState(getVisibleMonths(2026), [5]) },
+            { year: 2026, userId: 'member-2', months: buildMonthState(getVisibleMonths(2026), [5, 6, 7]) },
+            { year: 2026, userId: 'member-3', months: buildMonthState(getVisibleMonths(2026), [5]) },
+            { year: 2026, userId: 'member-4', months: buildMonthState(getVisibleMonths(2026), []) },
+          ],
+          incomes: [
+            { id: '2026-income-1', label: '세일스포츠', amount: 200000 },
+            { id: '2026-income-2', label: '장군당정', amount: 200000 },
+          ],
+          expenses: [
+            { id: '2026-expense-1', label: '4, 5월 대관료', amount: 50000 },
+            { id: '2026-expense-2', label: '유니폼 샘플 보증', amount: 100000 },
+            { id: '2026-expense-3', label: '유니폼 시안 보증', amount: 50000 },
+          ],
+        },
+        2027: {
+          months: getVisibleMonths(2027),
+          memberships: [
+            { year: 2027, userId: 'admin-1', months: buildMonthState(getVisibleMonths(2027)) },
+            { year: 2027, userId: 'admin-2', months: buildMonthState(getVisibleMonths(2027)) },
+            { year: 2027, userId: 'member-1', months: buildMonthState(getVisibleMonths(2027), [1, 2]) },
+            { year: 2027, userId: 'member-2', months: buildMonthState(getVisibleMonths(2027), [1]) },
+            { year: 2027, userId: 'member-3', months: buildMonthState(getVisibleMonths(2027), [1, 2, 3]) },
+            { year: 2027, userId: 'member-4', months: buildMonthState(getVisibleMonths(2027), []) },
+          ],
+          incomes: [{ id: '2027-income-1', label: '신년 후원금', amount: 120000 }],
+          expenses: [{ id: '2027-expense-1', label: '1월 대관료', amount: 70000 }],
+        },
+      });
+
+      const state = {
+        currentUserId: null,
+        selectedYear: 2026,
+        memberSearchTerm: '',
+        memberDetailYear: 2026,
+        yearRecords: seedYearRecords(),
+      };
+
+      const els = {
+        authStatusText: document.getElementById('authStatusText'),
+        logoutButton: document.getElementById('logoutButton'),
+        loginPanel: document.getElementById('loginPanel'),
+        loginSelect: document.getElementById('loginSelect'),
+        loginButton: document.getElementById('loginButton'),
+        yearSelect: document.getElementById('yearSelect'),
+        newYearInput: document.getElementById('newYearInput'),
+        addYearButton: document.getElementById('addYearButton'),
+        newYearTools: document.getElementById('newYearTools'),
+        incomeCardLabel: document.getElementById('incomeCardLabel'),
+        incomeCardValue: document.getElementById('incomeCardValue'),
+        expenseCardLabel: document.getElementById('expenseCardLabel'),
+        expenseCardValue: document.getElementById('expenseCardValue'),
+        balanceCardLabel: document.getElementById('balanceCardLabel'),
+        balanceCardValue: document.getElementById('balanceCardValue'),
+        activeMonthsLabel: document.getElementById('activeMonthsLabel'),
+        tableDescription: document.getElementById('tableDescription'),
+        membershipTableHead: document.getElementById('membershipTableHead'),
+        membershipTableBody: document.getElementById('membershipTableBody'),
+        adminOperations: document.getElementById('adminOperations'),
+        memberReadOnlyTransactions: document.getElementById('memberReadOnlyTransactions'),
+        approvalPanel: document.getElementById('approvalPanel'),
+        approvalList: document.getElementById('approvalList'),
+        extraIncomeTotal: document.getElementById('extraIncomeTotal'),
+        expenseTotal: document.getElementById('expenseTotal'),
+        incomeLabelInput: document.getElementById('incomeLabelInput'),
+        incomeAmountInput: document.getElementById('incomeAmountInput'),
+        addIncomeButton: document.getElementById('addIncomeButton'),
+        expenseLabelInput: document.getElementById('expenseLabelInput'),
+        expenseAmountInput: document.getElementById('expenseAmountInput'),
+        addExpenseButton: document.getElementById('addExpenseButton'),
+        incomeList: document.getElementById('incomeList'),
+        expenseList: document.getElementById('expenseList'),
+        memberExtraIncomeTotal: document.getElementById('memberExtraIncomeTotal'),
+        memberExpenseTotal: document.getElementById('memberExpenseTotal'),
+        memberIncomeList: document.getElementById('memberIncomeList'),
+        memberExpenseList: document.getElementById('memberExpenseList'),
+        lookupDescription: document.getElementById('lookupDescription'),
+        memberSearchInput: document.getElementById('memberSearchInput'),
+        memberYearSelect: document.getElementById('memberYearSelect'),
+        memberSearchButton: document.getElementById('memberSearchButton'),
+        memberLookupEmpty: document.getElementById('memberLookupEmpty'),
+        memberLookupResult: document.getElementById('memberLookupResult'),
+        memberResultName: document.getElementById('memberResultName'),
+        memberResultType: document.getElementById('memberResultType'),
+        memberResultSummary: document.getElementById('memberResultSummary'),
+        memberTimeline: document.getElementById('memberTimeline'),
+        memberDetailYear: document.getElementById('memberDetailYear'),
+        memberYearDetail: document.getElementById('memberYearDetail'),
+      };
+
+      const getCurrentUser = () => users.find((user) => user.id === state.currentUserId) || null;
+      const isAdmin = () => getCurrentUser()?.authRole === 'admin';
+      const getSortedYears = () => Object.keys(state.yearRecords).map(Number).sort((a, b) => a - b);
+      const getCurrentYearData = () => state.yearRecords[state.selectedYear];
+      const getBadgeClass = (role) => roleConfig[role]?.badge || 'bg-slate-100 text-slate-700';
+
+      const ensureYearRecordMemberships = (year) => {
+        const yearData = state.yearRecords[year];
+        const approvedMembers = getApprovedMembers();
+        approvedMembers.forEach((member) => {
+          const existing = yearData.memberships.find((record) => record.userId === member.id);
+          if (!existing) {
+            yearData.memberships.push({
+              year,
+              userId: member.id,
+              months: buildMonthState(yearData.months),
+            });
+          }
+        });
+      };
+
+      const getRecordForUser = (year, userId) => {
+        const yearData = state.yearRecords[year];
+        ensureYearRecordMemberships(year);
+        return yearData.memberships.find((record) => record.userId === userId);
+      };
+
+      const getAmountForMonth = (member, monthState) => (monthState?.paid ? roleConfig[member.role].fee : 0);
+      const getMembershipTotal = (member, months) => Object.values(months).reduce((sum, monthState) => sum + getAmountForMonth(member, monthState), 0);
+
+      const buildMembershipRows = (year) => {
+        ensureYearRecordMemberships(year);
+        return getApprovedMembers().map((member, index) => ({
+          order: index + 1,
+          member,
+          year,
+          months: getRecordForUser(year, member.id).months,
+        }));
+      };
+
+      const getYearFinancialSummary = (year) => {
+        const yearData = state.yearRecords[year];
+        const membershipIncome = buildMembershipRows(year).reduce((sum, row) => sum + getMembershipTotal(row.member, row.months), 0);
+        const extraIncome = yearData.incomes.reduce((sum, item) => sum + item.amount, 0);
+        const totalExpense = yearData.expenses.reduce((sum, item) => sum + item.amount, 0);
+        return {
+          membershipIncome,
+          extraIncome,
+          totalIncome: membershipIncome + extraIncome,
+          totalExpense,
+          balance: membershipIncome + extraIncome - totalExpense,
+        };
+      };
+
+      const renderLoginOptions = () => {
+        els.loginSelect.innerHTML = users
+          .map((user) => `<option value="${user.id}">${user.name} · ${user.authRole === 'admin' ? '관리자' : '회원'} · ${user.status === 'approved' ? '승인됨' : '승인 대기'}</option>`)
+          .join('');
+      };
+
+      const renderAuth = () => {
+        const currentUser = getCurrentUser();
+        if (!currentUser) {
+          els.authStatusText.textContent = '로그인이 필요합니다';
+          els.loginPanel.classList.remove('hidden');
+          els.logoutButton.classList.add('hidden');
+          return;
+        }
+
+        els.authStatusText.textContent = `${currentUser.name} · ${currentUser.authRole === 'admin' ? '관리자' : '일반 회원'} 로그인 중`;
+        els.loginPanel.classList.add('hidden');
+        els.logoutButton.classList.remove('hidden');
+      };
+
+      const renderYearControls = () => {
+        const years = getSortedYears();
+        els.yearSelect.innerHTML = years
+          .map((year) => `<option value="${year}" ${year === state.selectedYear ? 'selected' : ''}>${year}년</option>`)
+          .join('');
+        els.memberYearSelect.innerHTML = years
+          .map((year) => `<option value="${year}" ${year === state.memberDetailYear ? 'selected' : ''}>${year}년 상세</option>`)
+          .join('');
+        els.newYearTools.classList.toggle('hidden', !isAdmin());
+        els.newYearTools.classList.toggle('grid', isAdmin());
+      };
+
+      const renderDashboard = () => {
+        const summary = getYearFinancialSummary(state.selectedYear);
+        els.incomeCardLabel.textContent = `${state.selectedYear}년 총 세입 합계`;
+        els.expenseCardLabel.textContent = `${state.selectedYear}년 총 지출 합계`;
+        els.balanceCardLabel.textContent = `${state.selectedYear}년 현재 잔액`;
+        els.incomeCardValue.textContent = formatCurrency(summary.totalIncome);
+        els.expenseCardValue.textContent = formatCurrency(summary.totalExpense);
+        els.balanceCardValue.textContent = formatCurrency(summary.balance);
+      };
+
+      const renderMembershipTable = () => {
+        const months = getCurrentYearData().months;
+        const currentUser = getCurrentUser();
+        const adminMode = isAdmin();
+        const rows = adminMode
+          ? buildMembershipRows(state.selectedYear)
+          : currentUser && currentUser.status === 'approved'
+            ? buildMembershipRows(state.selectedYear).filter((row) => row.member.id === currentUser.id)
+            : [];
+
+        els.activeMonthsLabel.textContent = months.map((month) => `${month}월`).join(' / ');
+        els.tableDescription.textContent = adminMode
+          ? '간사는 월별 칸을 클릭해 납부를 원클릭으로 처리하고, 총액과 잔액을 실시간으로 확인할 수 있습니다.'
+          : '회원은 본인의 연도별 납부 내역을 읽기 전용으로 확인할 수 있습니다.';
+
+        els.membershipTableHead.innerHTML = [
+          '<th class="whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">순번</th>',
+          '<th class="whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">이름</th>',
+          '<th class="whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">등급</th>',
+          ...months.map((month) => `<th class="whitespace-nowrap px-4 py-4 text-center font-semibold text-slate-500">${month}월</th>`),
+          '<th class="whitespace-nowrap px-4 py-4 text-right font-semibold text-slate-500">개인별 총 납부액</th>',
+        ].join('');
+
+        if (!currentUser) {
+          els.membershipTableBody.innerHTML = '<tr><td colspan="20" class="px-4 py-10 text-center text-sm text-slate-500">로그인 후 회비 현황을 확인할 수 있습니다.</td></tr>';
+          return;
+        }
+
+        if (currentUser.status !== 'approved' && !adminMode) {
+          els.membershipTableBody.innerHTML = '<tr><td colspan="20" class="px-4 py-10 text-center text-sm text-amber-700">관리자 승인 후 회비 조회가 가능합니다.</td></tr>';
+          return;
+        }
+
+        els.membershipTableBody.innerHTML = rows
+          .map((row) => {
+            const rowTone = row.member.role === '준회원' ? 'bg-amber-50/80' : 'bg-white';
+            const total = getMembershipTotal(row.member, row.months);
+            return `
+              <tr class="${rowTone} align-top transition hover:bg-brand-50/70">
+                <td class="px-4 py-4 font-semibold text-slate-500">${row.order}</td>
+                <td class="px-4 py-4 font-semibold text-slate-900">${row.member.name}</td>
+                <td class="px-4 py-4">
+                  <span class="rounded-full px-3 py-1 text-xs font-semibold ${getBadgeClass(row.member.role)}">${row.member.role}</span>
+                  <p class="mt-2 text-xs text-slate-500">${row.member.role === '간사' ? '회비 면제' : `월 ${formatCurrency(roleConfig[row.member.role].fee)}`}</p>
+                </td>
+                ${months
+                  .map((month) => {
+                    const monthState = row.months[month] || { paid: false };
+                    const paid = Boolean(monthState.paid);
+                    const amount = getAmountForMonth(row.member, monthState);
+                    const isStaff = row.member.role === '간사';
+                    const interactive = adminMode && !isStaff;
+                    const cellClass = isStaff
+                      ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                      : paid
+                        ? 'border-emerald-300 bg-emerald-100 text-emerald-900'
+                        : interactive
+                          ? 'border-slate-200 bg-white text-slate-500 hover:border-brand-300 hover:bg-brand-50'
+                          : 'border-slate-200 bg-slate-50 text-slate-500';
+                    return `
+                      <td class="px-2 py-3">
+                        <button
+                          type="button"
+                          class="w-full rounded-2xl border px-3 py-3 text-center transition ${cellClass}"
+                          data-action="toggle-payment"
+                          data-user-id="${row.member.id}"
+                          data-month="${month}"
+                          ${interactive ? '' : 'disabled'}
+                        >
+                          <span class="text-xs font-bold">${isStaff ? '간사' : paid ? '납부 완료' : '미납'}</span>
+                          <span class="mt-1 block text-[11px] font-semibold">${isStaff ? '면제' : paid ? formatCurrency(amount) : interactive ? '클릭하여 등록' : '미납'}</span>
+                        </button>
+                      </td>
+                    `;
+                  })
+                  .join('')}
+                <td class="px-4 py-4 text-right font-black text-slate-900">${formatCurrency(total)}</td>
+              </tr>
+            `;
+          })
+          .join('');
+      };
+
+      const transactionItem = (item, kind, adminMode) => `
+        <div class="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div>
+            <p class="font-semibold text-slate-900">${item.label}</p>
+            <p class="text-xs text-slate-500">${state.selectedYear}년 ${kind}</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-black text-slate-900">${formatCurrency(item.amount)}</span>
+            ${adminMode ? `<button type="button" data-action="delete-${kind === '세입' ? 'income' : 'expense'}" data-id="${item.id}" class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 transition hover:text-rose-600">삭제</button>` : ''}
+          </div>
+        </div>
+      `;
+
+      const renderTransactions = () => {
+        const currentYearData = getCurrentYearData();
+        const incomeTotal = currentYearData.incomes.reduce((sum, item) => sum + item.amount, 0);
+        const expenseTotal = currentYearData.expenses.reduce((sum, item) => sum + item.amount, 0);
+        const adminMode = isAdmin();
+
+        els.adminOperations.classList.toggle('hidden', !adminMode);
+        els.memberReadOnlyTransactions.classList.toggle('hidden', adminMode || !getCurrentUser());
+
+        els.extraIncomeTotal.textContent = `합계 ${formatCurrency(incomeTotal)}`;
+        els.expenseTotal.textContent = `합계 ${formatCurrency(expenseTotal)}`;
+        els.incomeList.innerHTML = currentYearData.incomes.length
+          ? currentYearData.incomes.map((item) => transactionItem(item, '세입', true)).join('')
+          : '<div class="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">등록된 기타 세입이 없습니다.</div>';
+        els.expenseList.innerHTML = currentYearData.expenses.length
+          ? currentYearData.expenses.map((item) => transactionItem(item, '지출', true)).join('')
+          : '<div class="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">등록된 지출이 없습니다.</div>';
+
+        els.memberExtraIncomeTotal.textContent = `합계 ${formatCurrency(incomeTotal)}`;
+        els.memberExpenseTotal.textContent = `합계 ${formatCurrency(expenseTotal)}`;
+        els.memberIncomeList.innerHTML = currentYearData.incomes.length
+          ? currentYearData.incomes.map((item) => transactionItem(item, '세입', false)).join('')
+          : '<div class="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">등록된 기타 세입이 없습니다.</div>';
+        els.memberExpenseList.innerHTML = currentYearData.expenses.length
+          ? currentYearData.expenses.map((item) => transactionItem(item, '지출', false)).join('')
+          : '<div class="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">등록된 지출이 없습니다.</div>';
+      };
+
+      const renderApprovalList = () => {
+        const pendingUsers = users.filter((user) => user.status === 'pending');
+        els.approvalPanel.classList.toggle('hidden', !isAdmin());
+        els.approvalList.innerHTML = pendingUsers.length
+          ? pendingUsers
+              .map(
+                (user) => `
+                  <div class="rounded-3xl border border-amber-200 bg-amber-50 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <p class="font-black text-slate-900">${user.name}</p>
+                        <p class="mt-1 text-xs text-slate-500">가입 요청 · ${user.role}</p>
+                      </div>
+                      <button type="button" data-action="approve-user" data-user-id="${user.id}" class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800">승인</button>
+                    </div>
+                  </div>
+                `
+              )
+              .join('')
+          : '<div class="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">현재 승인 대기 중인 회원이 없습니다.</div>';
+      };
+
+      const getMemberTimelineData = (searchName) => {
+        const searchableMembers = isAdmin() ? getApprovedMembers() : getApprovedMembers().filter((user) => user.id === getCurrentUser()?.id);
+        const matchedMembers = searchableMembers.filter((member) => member.name.includes(searchName.trim()));
+        return matchedMembers.map((member) => ({
+          member,
+          yearSummaries: getSortedYears().map((year) => {
+            const months = state.yearRecords[year].months;
+            const record = getRecordForUser(year, member.id);
+            const paidMonths = months.filter((month) => record.months[month]?.paid);
+            const unpaidMonths = months.filter((month) => !record.months[month]?.paid);
+            return {
+              year,
+              months,
+              paidMonths,
+              unpaidMonths,
+              total: getMembershipTotal(member, record.months),
+            };
+          }),
+        }));
+      };
+
+      const renderMemberLookup = () => {
+        const currentUser = getCurrentUser();
+        els.lookupDescription.textContent = isAdmin()
+          ? '관리자는 모든 승인 회원을 검색할 수 있습니다.'
+          : currentUser
+            ? '일반 회원은 본인 이름으로만 조회할 수 있습니다.'
+            : '로그인 후 조회 기능을 사용할 수 있습니다.';
+
+        const query = state.memberSearchTerm.trim();
+        if (!currentUser) {
+          els.memberLookupEmpty.textContent = '로그인 후 회원 납부 조회를 사용할 수 있습니다.';
+          els.memberLookupEmpty.classList.remove('hidden');
+          els.memberLookupResult.classList.add('hidden');
+          return;
+        }
+
+        if (currentUser.status !== 'approved' && !isAdmin()) {
+          els.memberLookupEmpty.textContent = '관리자 승인 후 본인 납부 현황을 조회할 수 있습니다.';
+          els.memberLookupEmpty.classList.remove('hidden');
+          els.memberLookupResult.classList.add('hidden');
+          return;
+        }
+
+        if (!query) {
+          els.memberLookupEmpty.textContent = isAdmin() ? '이름을 입력하면 승인 회원의 연도별 납부 현황이 표시됩니다.' : `본인 이름인 ${currentUser.name} 를 입력해 조회해 보세요.`;
+          els.memberLookupEmpty.classList.remove('hidden');
+          els.memberLookupResult.classList.add('hidden');
+          return;
+        }
+
+        const matches = getMemberTimelineData(query);
+        if (!matches.length) {
+          els.memberLookupEmpty.textContent = isAdmin() ? '검색된 승인 회원이 없습니다.' : '일반 회원은 본인 이름으로만 조회할 수 있습니다.';
+          els.memberLookupEmpty.classList.remove('hidden');
+          els.memberLookupResult.classList.add('hidden');
+          return;
+        }
+
+        const selected = matches[0];
+        const detail = selected.yearSummaries.find((item) => item.year === state.memberDetailYear);
+        els.memberLookupEmpty.classList.add('hidden');
+        els.memberLookupResult.classList.remove('hidden');
+        els.memberResultName.textContent = selected.member.name;
+        els.memberResultType.textContent = selected.member.role;
+        els.memberResultType.className = `rounded-full px-3 py-1 text-xs font-semibold ${getBadgeClass(selected.member.role)}`;
+        const completedYears = selected.yearSummaries.filter((summary) => summary.unpaidMonths.length === 0).length;
+        els.memberResultSummary.textContent = `전체 ${selected.yearSummaries.length}개 연도 중 ${completedYears}개 연도 완납. 현재 선택 연도는 ${state.memberDetailYear}년입니다.`;
+        els.memberTimeline.innerHTML = selected.yearSummaries
+          .map((summary) => {
+            const done = summary.unpaidMonths.length === 0;
+            return `
+              <div class="rounded-3xl border ${done ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'} p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-black text-slate-900">${summary.year}년</p>
+                    <p class="mt-1 text-xs text-slate-500">총 납부액 ${formatCurrency(summary.total)}</p>
+                  </div>
+                  <span class="rounded-full px-3 py-1 text-xs font-semibold ${done ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${done ? '완납' : `${summary.unpaidMonths.length}달 미납`}</span>
+                </div>
+                <p class="mt-3 text-sm text-slate-600">납부 월: ${summary.paidMonths.length ? summary.paidMonths.map((month) => `${month}월`).join(', ') : '없음'}</p>
+              </div>
+            `;
+          })
+          .join('');
+        els.memberDetailYear.textContent = `${state.memberDetailYear}년 납부 현황`;
+        els.memberYearDetail.innerHTML = detail.months
+          .map((month) => {
+            const paid = detail.paidMonths.includes(month);
+            const fee = roleConfig[selected.member.role].fee;
+            return `
+              <div class="rounded-2xl border ${paid ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'} px-4 py-4">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm font-bold text-slate-900">${month}월</span>
+                  <span class="rounded-full px-3 py-1 text-xs font-semibold ${paid ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}">${paid ? '납부 완료' : '미납'}</span>
+                </div>
+                <p class="mt-3 text-sm text-slate-500">${selected.member.role === '간사' ? '간사 면제' : paid ? formatCurrency(fee) : '납부 내역 없음'}</p>
+              </div>
+            `;
+          })
+          .join('');
+      };
+
+      const createBlankYear = (year) => {
+        const months = getVisibleMonths(year);
+        state.yearRecords[year] = {
+          months,
+          memberships: getApprovedMembers().map((member) => ({
+            year,
+            userId: member.id,
+            months: buildMonthState(months),
+          })),
+          incomes: [],
+          expenses: [],
+        };
+      };
+
+      const togglePayment = (userId, month) => {
+        if (!isAdmin()) return;
+        const member = users.find((user) => user.id === userId);
+        if (!member || member.role === '간사' || member.status !== 'approved') return;
+        const record = getRecordForUser(state.selectedYear, userId);
+        record.months[month].paid = !record.months[month].paid;
+        renderAll();
+      };
+
+      const approveUser = (userId) => {
+        if (!isAdmin()) return;
+        const user = users.find((item) => item.id === userId);
+        if (!user) return;
+        user.status = 'approved';
+        getSortedYears().forEach((year) => ensureYearRecordMemberships(year));
+        renderAll();
+      };
+
+      const addTransaction = (kind) => {
+        if (!isAdmin()) return;
+        const labelInput = kind === 'income' ? els.incomeLabelInput : els.expenseLabelInput;
+        const amountInput = kind === 'income' ? els.incomeAmountInput : els.expenseAmountInput;
+        const label = labelInput.value.trim();
+        const amount = Number(amountInput.value);
+        if (!label || !amount) {
+          window.alert('항목명과 금액을 함께 입력해 주세요.');
+          return;
+        }
+        const collection = kind === 'income' ? getCurrentYearData().incomes : getCurrentYearData().expenses;
+        collection.push({ id: `${state.selectedYear}-${kind}-${Date.now()}`, label, amount });
+        labelInput.value = '';
+        amountInput.value = '';
+        renderAll();
+      };
+
+      const deleteTransaction = (kind, id) => {
+        if (!isAdmin()) return;
+        const collection = kind === 'income' ? getCurrentYearData().incomes : getCurrentYearData().expenses;
+        const index = collection.findIndex((item) => item.id === id);
+        if (index >= 0) collection.splice(index, 1);
+        renderAll();
+      };
+
+      const renderAll = () => {
+        renderLoginOptions();
+        renderAuth();
+        renderYearControls();
+        renderDashboard();
+        renderMembershipTable();
+        renderTransactions();
+        renderApprovalList();
+        renderMemberLookup();
+      };
+
+      els.loginButton.addEventListener('click', () => {
+        state.currentUserId = els.loginSelect.value;
+        const currentUser = getCurrentUser();
+        state.memberSearchTerm = currentUser?.authRole === 'member' ? currentUser.name : '';
+        renderAll();
+      });
+
+      els.logoutButton.addEventListener('click', () => {
+        state.currentUserId = null;
+        state.memberSearchTerm = '';
+        els.memberSearchInput.value = '';
+        renderAll();
+      });
+
+      els.yearSelect.addEventListener('change', (event) => {
+        state.selectedYear = Number(event.target.value);
+        if (!state.yearRecords[state.memberDetailYear]) state.memberDetailYear = state.selectedYear;
+        renderAll();
+      });
+
+      els.addYearButton.addEventListener('click', () => {
+        const nextYear = Number(els.newYearInput.value);
+        if (!nextYear || Number.isNaN(nextYear)) {
+          window.alert('개설할 연도를 입력해 주세요. 예: 2027');
+          return;
+        }
+        if (state.yearRecords[nextYear]) {
+          window.alert(`${nextYear}년 데이터는 이미 존재합니다.`);
+          return;
+        }
+        createBlankYear(nextYear);
+        state.selectedYear = nextYear;
+        state.memberDetailYear = nextYear;
+        els.newYearInput.value = '';
+        renderAll();
+      });
+
+      els.membershipTableBody.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action="toggle-payment"]');
+        if (!button) return;
+        togglePayment(button.dataset.userId, Number(button.dataset.month));
+      });
+
+      els.addIncomeButton.addEventListener('click', () => addTransaction('income'));
+      els.addExpenseButton.addEventListener('click', () => addTransaction('expense'));
+
+      els.incomeList.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action="delete-income"]');
+        if (!button) return;
+        deleteTransaction('income', button.dataset.id);
+      });
+
+      els.expenseList.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action="delete-expense"]');
+        if (!button) return;
+        deleteTransaction('expense', button.dataset.id);
+      });
+
+      els.approvalList.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action="approve-user"]');
+        if (!button) return;
+        approveUser(button.dataset.userId);
+      });
+
+      els.memberSearchButton.addEventListener('click', () => {
+        state.memberSearchTerm = els.memberSearchInput.value;
+        renderMemberLookup();
+      });
+
+      els.memberSearchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          state.memberSearchTerm = els.memberSearchInput.value;
+          renderMemberLookup();
+        }
+      });
+
+      els.memberYearSelect.addEventListener('change', (event) => {
+        state.memberDetailYear = Number(event.target.value);
+        renderMemberLookup();
+      });
+
+      renderAll();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,295 @@
+'use server';
+
+import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache';
+import { publicApiFetch, serverApiFetch } from '@/lib/backend-api';
+import { ACCESS_TOKEN_COOKIE } from '@/lib/session';
+
+type ActionResult = {
+  ok: boolean;
+  message?: string;
+};
+
+function refreshHome() {
+  revalidatePath('/');
+  revalidatePath('/login');
+  revalidatePath('/signup');
+  revalidatePath('/dashboard');
+  revalidatePath('/member');
+  revalidatePath('/admin/members');
+  revalidatePath('/admin/finance');
+}
+
+export async function loginAction(username: string, password: string): Promise<ActionResult> {
+  const result = await publicApiFetch<{
+    accessToken: string;
+    tokenType: string;
+    expiresIn: number;
+  }>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!result.ok || !result.data) {
+    return { ok: false, message: result.message ?? '로그인에 실패했습니다.' };
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set(ACCESS_TOKEN_COOKIE, result.data.accessToken, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: result.data.expiresIn,
+  });
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function signupAction(input: {
+  fullName: string;
+  username: string;
+  phoneNumber: string;
+  address: string;
+  birthDate: string;
+  password: string;
+}): Promise<ActionResult> {
+  const result = await publicApiFetch('/api/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '가입 신청에 실패했습니다.' };
+  }
+
+  return { ok: true, message: '가입 요청이 접수되었습니다. 관리자 승인 후 이용할 수 있습니다.' };
+}
+
+export async function checkUsernameAvailabilityAction(username: string): Promise<ActionResult> {
+  const result = await serverApiFetch<{ available: boolean; message: string }>(
+    `/api/auth/check-username?username=${encodeURIComponent(username)}`
+  );
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '아이디 확인에 실패했습니다.' };
+  }
+
+  return { ok: Boolean(result.data?.available), message: result.data?.message };
+}
+
+export async function updateProfileAction(input: {
+  username: string;
+  address: string;
+  birthDate: string;
+}): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/auth/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '사용자 정보 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: '사용자 정보가 변경되었습니다.' };
+}
+
+export async function logoutAction(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.delete(ACCESS_TOKEN_COOKIE);
+  refreshHome();
+}
+
+export async function createFiscalYearAction(year: number): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/years', {
+    method: 'POST',
+    body: JSON.stringify({ year }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '연도 개설에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function togglePaymentAction(args: { fiscalYearId: string; memberId: string; month: number; paid: boolean }): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/payments/toggle', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      fiscalYearId: args.fiscalYearId,
+      memberId: args.memberId,
+      month: args.month,
+    }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '납부 상태 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function approveMemberAction(memberId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/admin/members/${memberId}/approve`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '회원 승인에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function rejectMemberAction(memberId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/admin/members/${memberId}/reject`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '회원 거절에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function deactivateMemberAction(memberId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/admin/members/${memberId}/deactivate`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '회원 비활성화에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function activateMemberAction(memberId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/admin/members/${memberId}/activate`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '회원 활성화에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function promoteToAdminAction(memberId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/admin/members/${memberId}/promote-admin`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '간사 승격에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function adminToPromoteAction(memberId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/admin/members/${memberId}/admin-promote`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '간사 제거에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function resetMemberPasswordAction(memberId: string): Promise<ActionResult> {
+  const result = await serverApiFetch<{ message?: string }>(`/api/admin/members/${memberId}/reset-password`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '비밀번호 초기화에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: result.data?.message ?? '비밀번호가 기본값으로 초기화되었습니다.' };
+}
+
+export async function changePasswordAction(input: { currentPassword: string; newPassword: string }): Promise<ActionResult> {
+  const result = await serverApiFetch<{ message?: string }>('/api/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '비밀번호 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: result.data?.message ?? '비밀번호가 변경되었습니다.' };
+}
+
+export async function createIncomeEntryAction(args: { fiscalYearId: string; label: string; amount: number; memo?: string | null }): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/finance/incomes', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '세입 추가에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function createExpenseEntryAction(args: { fiscalYearId: string; label: string; amount: number; memo?: string | null }): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/finance/expenses', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '지출 추가에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function deleteIncomeEntryAction(id: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/finance/incomes/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '세입 삭제에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function deleteExpenseEntryAction(id: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/finance/expenses/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '지출 삭제에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
