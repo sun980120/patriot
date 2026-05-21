@@ -11,3 +11,9 @@ export const ROLE_META = {
 export function getVisibleMonths(year: number) {
   return year === START_YEAR ? [5, 6, 7, 8, 9, 10, 11, 12] : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 }
+
+export const CLUB_BANK = {
+  bankName: '수협은행',
+  accountNumber: '0010-3508-4788',
+  accountHolder: '박형주',
+};

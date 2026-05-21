@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { approveMemberAction, createFiscalYearAction, togglePaymentAction } from '@/app/actions';
-import { HIDDEN_PROFILE_EMAILS, ROLE_META } from '@/lib/constants';
+import { HIDDEN_PROFILE_EMAILS, ROLE_META, CLUB_BANK } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
 import type { DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
 
@@ -38,6 +38,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [actionMessage, setActionMessage] = useState('');
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  
+  const [paymentGuide, setPaymentGuide] = useState<string | null>(null);
 
   const profile = data.profile;
   const adminMode = isAdmin(profile);
@@ -375,117 +377,207 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   }
 
   return (
-    <div className="min-w-0 space-y-6 sm:space-y-8">
-      {actionMessage && (
-        <section className="glass-panel rounded-[24px] border border-white/70 px-4 py-3 shadow-soft sm:px-5">
-          <p className="text-sm text-rose-600">{actionMessage}</p>
+    <>
+      <div className="min-w-0 space-y-6 sm:space-y-8">
+        {actionMessage && (
+          <section className="glass-panel rounded-[24px] border border-white/70 px-4 py-3 shadow-soft sm:px-5">
+            <p className="text-sm text-rose-600">{actionMessage}</p>
+          </section>
+        )}
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <MetricCard label={`${selectedYear.year}년 총 세입`} value={formatCurrency(summary.totalIncome)} description="회비 + 기타 세입" />
+          <MetricCard label={`${selectedYear.year}년 총 지출`} value={formatCurrency(summary.totalExpense)} description="해당 연도 지출 합계" />
+          <MetricCard label="누적 남은 잔액" value={formatCurrency(summary.cumulativeBalance)} description="전체 누적 세입 - 전체 누적 지출" accent />
         </section>
-      )}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <MetricCard label={`${selectedYear.year}년 총 세입`} value={formatCurrency(summary.totalIncome)} description="회비 + 기타 세입" />
-        <MetricCard label={`${selectedYear.year}년 총 지출`} value={formatCurrency(summary.totalExpense)} description="해당 연도 지출 합계" />
-        <MetricCard label="누적 남은 잔액" value={formatCurrency(summary.cumulativeBalance)} description="전체 누적 세입 - 전체 누적 지출" accent />
-      </section>
-
-      <section className="grid min-w-0 gap-6">
-        <section className="glass-panel min-w-0 overflow-hidden rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
-          <div className="flex flex-col gap-4 border-b border-slate-200/80 pb-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Finance Control</p>
-              <h2 className="mt-2 text-2xl font-black text-slate-900">연도별 회비 관리</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                {adminMode
-                  ? '간사는 월 칸을 클릭해 원클릭으로 납부 완료를 처리할 수 있습니다.'
-                  : '일반 회원은 본인의 납부 현황을 읽기 전용으로 확인합니다.'}
-              </p>
+        <section className="grid min-w-0 gap-6">
+          <section className="glass-panel min-w-0 overflow-hidden rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+            <div className="flex flex-col gap-4 border-b border-slate-200/80 pb-5 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Finance Control</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-900">연도별 회비 관리</h2>
+                <p className="mt-2 text-sm text-slate-500">
+                  {adminMode
+                    ? '간사는 월 칸을 클릭해 원클릭으로 납부 완료를 처리할 수 있습니다.'
+                    : '일반 회원은 본인의 납부 현황을 읽기 전용으로 확인합니다.'}
+                </p>
+              </div>
+              <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto lg:grid-cols-[160px_auto] lg:items-end">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">연도 선택</span>
+                  <select
+                    value={selectedYearId}
+                    onChange={(event) => setSelectedYearId(event.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+                  >
+                    {fiscalYears.map((year) => (
+                      <option key={year.id} value={year.id}>{year.year}년</option>
+                    ))}
+                  </select>
+                </label>
+                {adminMode ? (
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto] lg:w-[340px]">
+                    <input
+                      value={newYearInput}
+                      onChange={(event) => setNewYearInput(event.target.value)}
+                      type="number"
+                      min={2026}
+                      step={1}
+                      placeholder="예: 2028"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+                    />
+                    <button onClick={addYear} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800">
+                      새 연도 개설
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
-            <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto lg:grid-cols-[160px_auto] lg:items-end">
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">연도 선택</span>
-                <select
-                  value={selectedYearId}
-                  onChange={(event) => setSelectedYearId(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
-                >
-                  {fiscalYears.map((year) => (
-                    <option key={year.id} value={year.id}>{year.year}년</option>
-                  ))}
-                </select>
-              </label>
-              {adminMode ? (
-                <div className="grid gap-3 sm:grid-cols-[1fr_auto] lg:w-[340px]">
+
+            <div className="mt-4 flex flex-wrap gap-3 text-sm">
+              <span className="rounded-full bg-slate-100 px-4 py-2 text-slate-600">표시 월: {selectedYear.visible_months.map((month) => `${month}월`).join(' / ')}</span>
+              <span className="rounded-full bg-amber-100 px-4 py-2 text-amber-900">준회원</span>
+              <span className="rounded-full bg-emerald-100 px-4 py-2 text-emerald-900">간사 회비 면제</span>
+            </div>
+
+            {adminMode ? (
+              <div className="mt-4 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">회원 검색</p>
+                  <p className="mt-1 text-sm text-slate-500">이름으로 검색해서 해당 회원만 빠르게 납부 처리할 수 있습니다.</p>
+                </div>
+                <div className="grid gap-2 sm:w-[320px] sm:grid-cols-[minmax(0,1fr)_auto]">
                   <input
-                    value={newYearInput}
-                    onChange={(event) => setNewYearInput(event.target.value)}
-                    type="number"
-                    min={2026}
-                    step={1}
-                    placeholder="예: 2028"
+                    value={memberSearch}
+                    onChange={(event) => setMemberSearch(event.target.value)}
+                    type="text"
+                    placeholder="회원 이름 검색"
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
                   />
-                  <button onClick={addYear} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800">
-                    새 연도 개설
+                  <button
+                    type="button"
+                    onClick={() => setMemberSearch('')}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                  >
+                    초기화
                   </button>
                 </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-3 text-sm">
-            <span className="rounded-full bg-slate-100 px-4 py-2 text-slate-600">표시 월: {selectedYear.visible_months.map((month) => `${month}월`).join(' / ')}</span>
-            <span className="rounded-full bg-amber-100 px-4 py-2 text-amber-900">준회원</span>
-            <span className="rounded-full bg-emerald-100 px-4 py-2 text-emerald-900">간사 회비 면제</span>
-          </div>
-
-          {adminMode ? (
-            <div className="mt-4 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">회원 검색</p>
-                <p className="mt-1 text-sm text-slate-500">이름으로 검색해서 해당 회원만 빠르게 납부 처리할 수 있습니다.</p>
               </div>
-              <div className="grid gap-2 sm:w-[320px] sm:grid-cols-[minmax(0,1fr)_auto]">
-                <input
-                  value={memberSearch}
-                  onChange={(event) => setMemberSearch(event.target.value)}
-                  type="text"
-                  placeholder="회원 이름 검색"
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setMemberSearch('')}
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-                >
-                  초기화
-                </button>
-              </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          <div className="mt-6 space-y-4 lg:hidden">
-            {adminMode ? (
-              rows.length ? rows.map((row) => {
-                const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
-                const expanded = expandedMemberId === row.member.id;
+            <div className="mt-6 space-y-4 lg:hidden">
+              {adminMode ? (
+                rows.length ? rows.map((row) => {
+                  const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
+                  const expanded = expandedMemberId === row.member.id;
 
-                return (
-                  <article
-                    key={row.member.id}
-                    className={`rounded-[24px] border p-4 shadow-sm ${
-                      row.member.member_grade === '준회원'
-                        ? 'border-amber-200 bg-amber-50/70'
-                        : 'border-slate-200 bg-white'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandedMemberId((current) =>
-                          current === row.member.id ? null : row.member.id
-                        )
-                      }
-                      className="w-full text-left"
+                  return (
+                    <article
+                      key={row.member.id}
+                      className={`rounded-[24px] border p-4 shadow-sm ${
+                        row.member.member_grade === '준회원'
+                          ? 'border-amber-200 bg-amber-50/70'
+                          : 'border-slate-200 bg-white'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedMemberId((current) =>
+                            current === row.member.id ? null : row.member.id
+                          )
+                        }
+                        className="w-full text-left"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                              회원 {row.order}
+                            </p>
+
+                            <h3 className="mt-1 text-xl font-black text-slate-900">
+                              {row.member.full_name}
+                            </h3>
+                          </div>
+
+                          <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[row.member.member_grade].badge}`}>
+                            {row.member.member_grade}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                          <span className="text-sm text-slate-500">총 납부액</span>
+                          <span className="text-lg font-black text-slate-900">
+                            {formatCurrency(total)}
+                          </span>
+                        </div>
+
+                        <p className="mt-3 text-center text-xs font-semibold text-slate-400">
+                          {expanded ? '납부 내역 닫기' : '납부 내역 보기'}
+                        </p>
+                      </button>
+
+                      {expanded ? (
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                          {row.cells.map((cell) => {
+                            const staff = row.member.member_grade === '간사';
+                            const cellActive = adminMode && !staff;
+                            const paid = Boolean(cell.payment?.paid);
+
+                            return (
+                              <button
+                                key={`${row.member.id}-${cell.month}`}
+                                type="button"
+                                disabled={!cellActive}
+                                onClick={() => handleTogglePaid(row.member, cell.month)}
+                                className={`rounded-2xl border px-3 py-4 text-left transition ${buildPaymentButtonClass(
+                                  staff,
+                                  paid,
+                                  cellActive
+                                )}`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-sm font-black">
+                                    {cell.month}월
+                                  </span>
+
+                                  <span className="text-xs font-bold">
+                                    {staff ? '간사' : paid ? '납부 완료' : '미납'}
+                                  </span>
+                                </div>
+
+                                <p className="mt-3 text-xs font-semibold">
+                                  {staff
+                                    ? '면제'
+                                    : paid
+                                      ? '완료'
+                                      : cellActive
+                                        ? '탭해서 등록'
+                                        : '납부 전'}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                }) : (
+                  <EmptyState text="검색된 회원이 없습니다." />
+                )
+              ) : (
+                rows.length ? rows.map((row) => {
+                  const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
+
+                  return (
+                    <article
+                      key={row.member.id}
+                      className={`rounded-[24px] border p-4 shadow-sm ${
+                        row.member.member_grade === '준회원'
+                          ? 'border-amber-200 bg-amber-50/70'
+                          : 'border-slate-200 bg-white'
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -510,28 +602,18 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                         </span>
                       </div>
 
-                      <p className="mt-3 text-center text-xs font-semibold text-slate-400">
-                        {expanded ? '납부 내역 닫기' : '납부 내역 보기'}
-                      </p>
-                    </button>
-
-                    {expanded ? (
                       <div className="mt-4 grid grid-cols-2 gap-3">
                         {row.cells.map((cell) => {
                           const staff = row.member.member_grade === '간사';
-                          const cellActive = adminMode && !staff;
                           const paid = Boolean(cell.payment?.paid);
 
                           return (
-                            <button
+                            <div
                               key={`${row.member.id}-${cell.month}`}
-                              type="button"
-                              disabled={!cellActive}
-                              onClick={() => handleTogglePaid(row.member, cell.month)}
                               className={`rounded-2xl border px-3 py-4 text-left transition ${buildPaymentButtonClass(
                                 staff,
                                 paid,
-                                cellActive
+                                false
                               )}`}
                             >
                               <div className="flex items-center justify-between gap-2">
@@ -545,226 +627,197 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                               </div>
 
                               <p className="mt-3 text-xs font-semibold">
-                                {staff
-                                  ? '면제'
-                                  : paid
-                                    ? '완료'
-                                    : cellActive
-                                      ? '탭해서 등록'
-                                      : '납부 전'}
+                                {staff ? '면제' : paid ? '완료' : '납부 전'}
                               </p>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              }) : (
-                <EmptyState text="검색된 회원이 없습니다." />
-              )
-            ) : (
-              rows.length ? rows.map((row) => {
-                const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
-
-                return (
-                  <article
-                    key={row.member.id}
-                    className={`rounded-[24px] border p-4 shadow-sm ${
-                      row.member.member_grade === '준회원'
-                        ? 'border-amber-200 bg-amber-50/70'
-                        : 'border-slate-200 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                          회원 {row.order}
-                        </p>
-
-                        <h3 className="mt-1 text-xl font-black text-slate-900">
-                          {row.member.full_name}
-                        </h3>
-                      </div>
-
-                      <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[row.member.member_grade].badge}`}>
-                        {row.member.member_grade}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                      <span className="text-sm text-slate-500">총 납부액</span>
-                      <span className="text-lg font-black text-slate-900">
-                        {formatCurrency(total)}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      {row.cells.map((cell) => {
-                        const staff = row.member.member_grade === '간사';
-                        const paid = Boolean(cell.payment?.paid);
-
-                        return (
-                          <div
-                            key={`${row.member.id}-${cell.month}`}
-                            className={`rounded-2xl border px-3 py-4 text-left transition ${buildPaymentButtonClass(
-                              staff,
-                              paid,
-                              false
-                            )}`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-black">
-                                {cell.month}월
-                              </span>
-
-                              <span className="text-xs font-bold">
-                                {staff ? '간사' : paid ? '납부 완료' : '미납'}
-                              </span>
+                              {!staff && !paid ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPaymentGuide(row.member.full_name)
+                                  }
+                                  className="mt-3 w-full rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white"
+                                >
+                                  납부하기
+                                </button>
+                              ) : null}
                             </div>
-
-                            <p className="mt-3 text-xs font-semibold">
-                              {staff ? '면제' : paid ? '완료' : '납부 전'}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </article>
-                );
-              }) : (
-                <EmptyState text="검색된 회원이 없습니다." />
-              )
-            )}
-          </div>
-
-          <div className="mt-6 hidden max-w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white lg:block">
-            <div className="max-w-full overflow-x-auto">
-              <table className="divide-y divide-slate-200 text-sm" style={{ minWidth: `${tableMinWidth}px` }}>
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="w-20 whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">순번</th>
-                    <th className="w-36 whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">이름</th>
-                    <th className="w-36 whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">등급</th>
-                    {selectedYear.visible_months.map((month) => (
-                      <th key={month} className="w-28 whitespace-nowrap px-3 py-4 text-center font-semibold text-slate-500">{month}월</th>
-                    ))}
-                    <th className="w-40 whitespace-nowrap px-4 py-4 text-right font-semibold text-slate-500">개인별 총 납부액</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {rows.length ? rows.map((row) => {
-                    const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
-                    return (
-                      <tr key={row.member.id} className={row.member.member_grade === '준회원' ? 'bg-amber-50/80' : 'bg-white'}>
-                        <td className="px-4 py-5 font-semibold text-slate-500">{row.order}</td>
-                        <td className="px-4 py-5 font-semibold text-slate-900 whitespace-nowrap">{row.member.full_name}</td>
-                        <td className="px-4 py-5">
-                          <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[row.member.member_grade].badge}`}>{row.member.member_grade}</span>
-                          <p className="mt-2 whitespace-nowrap text-xs text-slate-500">{row.member.member_grade === '간사' ? '회비 면제' : `월 ${formatCurrency(ROLE_META[row.member.member_grade].fee)}`}</p>
-                        </td>
-                        {row.cells.map((cell) => {
-                          const staff = row.member.member_grade === '간사';
-                          const cellActive = adminMode && !staff;
-                          const paid = Boolean(cell.payment?.paid);
-                          const amount = cell.payment?.charged_amount ?? 0;
-                          const appliedGrade = cell.payment?.applied_grade ?? row.member.member_grade;
-                          return (
-                            <td key={`${row.member.id}-${cell.month}`} className="px-2 py-4">
-                              <button
-                                type="button"
-                                disabled={!cellActive}
-                                onClick={() => handleTogglePaid(row.member, cell.month)}
-                                className={`w-full rounded-2xl border px-3 py-3 text-center transition ${buildPaymentButtonClass(staff, paid, cellActive)}`}
-                              >
-                                <span className="block text-xs font-bold">{staff ? '간사' : paid ? '납부 완료' : '미납'}</span>
-                                <span className="mt-1 block text-[11px] font-semibold whitespace-nowrap">
-                                  {staff ? '면제' : paid ? '완료' : cellActive ? '클릭하여 등록' : '납부 전'}
-                                </span>
-                              </button>
-                            </td>
                           );
                         })}
-                        <td className="px-4 py-5 text-right font-black text-slate-900">{formatCurrency(total)}</td>
-                      </tr>
-                    );
-                  }) : (
-                    <tr>
-                      <td colSpan={selectedYear.visible_months.length + 4} className="px-4 py-10 text-center text-sm text-slate-500">
-                        검색된 회원이 없습니다.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                      </div>
+                    </article>
+                  );
+                }) : (
+                  <EmptyState text="검색된 회원이 없습니다." />
+                )
+              )}
             </div>
-          </div>
-        </section>
 
-        {adminMode ? (
-          <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Approval</p>
-            <div className="mt-2">
-              <h2 className="text-2xl font-black text-slate-900">회원 승인 관리</h2>
-              <p className="mt-2 text-sm text-slate-500">가입 요청 회원을 승인하면 모든 연도 테이블에 자동 포함됩니다.</p>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {pendingProfiles.length ? pendingProfiles.map((member) => (
-                <div key={member.id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-black text-slate-900">{member.full_name}</p>
-                      <p className="mt-1 text-xs text-slate-500">가입 요청 · {member.member_grade}</p>
-                    </div>
-                    <button onClick={() => handleApprove(member.id)} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800">
-                      승인
-                    </button>
-                  </div>
-                </div>
-              )) : <EmptyState text="현재 승인 대기 회원이 없습니다." />}
+            <div className="mt-6 hidden max-w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white lg:block">
+              <div className="max-w-full overflow-x-auto">
+                <table className="divide-y divide-slate-200 text-sm" style={{ minWidth: `${tableMinWidth}px` }}>
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="w-20 whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">순번</th>
+                      <th className="w-36 whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">이름</th>
+                      <th className="w-36 whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">등급</th>
+                      {selectedYear.visible_months.map((month) => (
+                        <th key={month} className="w-28 whitespace-nowrap px-3 py-4 text-center font-semibold text-slate-500">{month}월</th>
+                      ))}
+                      <th className="w-40 whitespace-nowrap px-4 py-4 text-right font-semibold text-slate-500">개인별 총 납부액</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {rows.length ? rows.map((row) => {
+                      const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
+                      return (
+                        <tr key={row.member.id} className={row.member.member_grade === '준회원' ? 'bg-amber-50/80' : 'bg-white'}>
+                          <td className="px-4 py-5 font-semibold text-slate-500">{row.order}</td>
+                          <td className="px-4 py-5 font-semibold text-slate-900 whitespace-nowrap">{row.member.full_name}</td>
+                          <td className="px-4 py-5">
+                            <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[row.member.member_grade].badge}`}>{row.member.member_grade}</span>
+                            <p className="mt-2 whitespace-nowrap text-xs text-slate-500">{row.member.member_grade === '간사' ? '회비 면제' : `월 ${formatCurrency(ROLE_META[row.member.member_grade].fee)}`}</p>
+                          </td>
+                          {row.cells.map((cell) => {
+                            const staff = row.member.member_grade === '간사';
+                            const cellActive = adminMode && !staff;
+                            const paid = Boolean(cell.payment?.paid);
+                            const amount = cell.payment?.charged_amount ?? 0;
+                            const appliedGrade = cell.payment?.applied_grade ?? row.member.member_grade;
+                            return (
+                              <td key={`${row.member.id}-${cell.month}`} className="px-2 py-4">
+                                <button
+                                  type="button"
+                                  disabled={!cellActive}
+                                  onClick={() => handleTogglePaid(row.member, cell.month)}
+                                  className={`w-full rounded-2xl border px-3 py-3 text-center transition ${buildPaymentButtonClass(staff, paid, cellActive)}`}
+                                >
+                                  <span className="block text-xs font-bold">{staff ? '간사' : paid ? '납부 완료' : '미납'}</span>
+                                  <span className="mt-1 block text-[11px] font-semibold whitespace-nowrap">
+                                    {staff ? '면제' : paid ? '완료' : cellActive ? '클릭하여 등록' : '납부 전'}
+                                  </span>
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td className="px-4 py-5 text-right font-black text-slate-900">{formatCurrency(total)}</td>
+                        </tr>
+                      );
+                    }) : (
+                      <tr>
+                        <td colSpan={selectedYear.visible_months.length + 4} className="px-4 py-10 text-center text-sm text-slate-500">
+                          검색된 회원이 없습니다.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </section>
-        ) : null}
 
-        <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
-          <div className="flex flex-col gap-4 border-b border-slate-200/80 pb-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Finance</p>
-              <h3 className="mt-2 text-xl font-black text-slate-900">세입 / 지출 현황</h3>
-              <p className="mt-2 text-sm text-slate-500">선택한 연도의 세입과 지출을 한 카드에서 전환해서 확인합니다.</p>
+          {adminMode ? (
+            <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Approval</p>
+              <div className="mt-2">
+                <h2 className="text-2xl font-black text-slate-900">회원 승인 관리</h2>
+                <p className="mt-2 text-sm text-slate-500">가입 요청 회원을 승인하면 모든 연도 테이블에 자동 포함됩니다.</p>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {pendingProfiles.length ? pendingProfiles.map((member) => (
+                  <div key={member.id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-black text-slate-900">{member.full_name}</p>
+                        <p className="mt-1 text-xs text-slate-500">가입 요청 · {member.member_grade}</p>
+                      </div>
+                      <button onClick={() => handleApprove(member.id)} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800">
+                        승인
+                      </button>
+                    </div>
+                  </div>
+                )) : <EmptyState text="현재 승인 대기 회원이 없습니다." />}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+            <div className="flex flex-col gap-4 border-b border-slate-200/80 pb-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Finance</p>
+                <h3 className="mt-2 text-xl font-black text-slate-900">세입 / 지출 현황</h3>
+                <p className="mt-2 text-sm text-slate-500">선택한 연도의 세입과 지출을 한 카드에서 전환해서 확인합니다.</p>
+              </div>
+              <div className="inline-flex rounded-full bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setFinanceTab('income')}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    financeTab === 'income' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  세입
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFinanceTab('expense')}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    financeTab === 'expense' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  지출
+                </button>
+              </div>
             </div>
-            <div className="inline-flex rounded-full bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => setFinanceTab('income')}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  financeTab === 'income' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                세입
-              </button>
-              <button
-                type="button"
-                onClick={() => setFinanceTab('expense')}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  financeTab === 'expense' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                지출
-              </button>
+            <div className="mt-4">
+              {financeTab === 'income' ? (
+                <TransactionPanel title="기타 세입" total={summary.otherIncome} items={yearIncomes} kind="income" embedded />
+              ) : (
+                <TransactionPanel title="지출 내역" total={summary.totalExpense} items={yearExpenses} kind="expense" embedded />
+              )}
             </div>
-          </div>
-          <div className="mt-4">
-            {financeTab === 'income' ? (
-              <TransactionPanel title="기타 세입" total={summary.otherIncome} items={yearIncomes} kind="income" embedded />
-            ) : (
-              <TransactionPanel title="지출 내역" total={summary.totalExpense} items={yearExpenses} kind="expense" embedded />
-            )}
-          </div>
+          </section>
+
         </section>
+      </div>
+      {paymentGuide ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-soft">
+          <h3 className="text-xl font-black text-slate-900">회비 납부 안내</h3>
 
-      </section>
-    </div>
+          <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+            <p>
+              <span className="font-bold text-slate-900">은행:</span> {CLUB_BANK.bankName}
+            </p>
+            <p>
+              <span className="font-bold text-slate-900">계좌번호:</span> {CLUB_BANK.accountNumber}
+            </p>
+            <p>
+              <span className="font-bold text-slate-900">예금주:</span> {CLUB_BANK.accountHolder}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              navigator.clipboard.writeText(`${CLUB_BANK.bankName} ${CLUB_BANK.accountNumber}`)
+            }
+            className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white"
+          >
+            계좌번호 복사
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPaymentGuide(null)}
+            className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    ) : null}
+    </>
+    
   );
 }
 
