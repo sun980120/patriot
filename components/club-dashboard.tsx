@@ -39,6 +39,9 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [copyMessage, setCopyMessage] = useState('');
+  const [showBankApps, setShowBankApps] = useState(false);
+  const [launchingApp, setLaunchingApp] = useState<'toss' | 'kakaobank' | null>(null);
+  const [appMessage, setAppMessage] = useState('');
   
   const [paymentGuide, setPaymentGuide] = useState<string | null>(null);
 
@@ -288,6 +291,12 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
         router.refresh();
       });
     }
+  };
+  const resetPaymentModalState = () => {
+    setCopyMessage('');
+    setShowBankApps(false);
+    setLaunchingApp(null);
+    setAppMessage('');
   };
 
   if (!hasFiscalYear) {
@@ -802,41 +811,111 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
             onClick={async () => {
               await navigator.clipboard.writeText(CLUB_BANK.accountNumber);
               setCopyMessage('계좌번호가 복사되었습니다.');
+              setShowBankApps(true);
+              setAppMessage('');
             }}
             className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white"
           >
             계좌번호 복사
           </button>
+
           {copyMessage ? (
-              <p className="mt-2 text-center text-sm font-semibold text-emerald-700">
-                {copyMessage}
-              </p>
-            ) : null}
+            <p className="mt-2 text-center text-sm font-semibold text-emerald-700">
+              {copyMessage}
+            </p>
+          ) : null}
 
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = 'supertoss://';
-              }}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"
-            >
-              토스 열기
-            </button>
+          {showBankApps ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setLaunchingApp('toss');
+                  setAppMessage('');
 
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = 'kakaobank://';
-              }}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"
-            >
-              카카오뱅크 열기
-          </button>
+                  const timeout = setTimeout(() => {
+                    setLaunchingApp(null);
+                    setAppMessage('토스 앱이 설치되어 있지 않거나 실행되지 않았습니다.');
+                  }, 900);
+
+                  window.location.href = 'supertoss://';
+
+                  window.addEventListener(
+                    'blur',
+                    () => {
+                      clearTimeout(timeout);
+
+                      setTimeout(() => {
+                        setCopyMessage('');
+                        setShowBankApps(false);
+                        setLaunchingApp(null);
+                        setAppMessage('');
+                      }, 500);
+                    },
+                    { once: true }
+                  );
+                }}
+                className={`mt-3 w-full rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                  launchingApp === 'toss'
+                    ? 'bg-blue-600 text-white'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {launchingApp === 'toss' ? '토스 실행 중...' : '토스 열기'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLaunchingApp('kakaobank');
+                  setAppMessage('');
+
+                  const timeout = setTimeout(() => {
+                    setLaunchingApp(null);
+                    setAppMessage('카카오뱅크 앱이 설치되어 있지 않거나 실행되지 않았습니다.');
+                  }, 900);
+
+                  window.location.href = 'kakaobank://';
+
+                  window.addEventListener(
+                    'blur',
+                    () => {
+                      clearTimeout(timeout);
+
+                      setTimeout(() => {
+                        setCopyMessage('');
+                        setShowBankApps(false);
+                        setLaunchingApp(null);
+                        setAppMessage('');
+                      }, 500);
+                    },
+                    { once: true }
+                  );
+                }}
+                className={`mt-2 w-full rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                  launchingApp === 'kakaobank'
+                    ? 'bg-yellow-400 text-black'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {launchingApp === 'kakaobank'
+                  ? '카카오뱅크 실행 중...'
+                  : '카카오뱅크 열기'}
+              </button>
+            </>
+          ) : null}
+
+          {appMessage ? (
+            <p className="mt-3 text-center text-sm font-semibold text-rose-600">
+              {appMessage}
+            </p>
+          ) : null}
+
           <button
             type="button"
             onClick={() => {
               setPaymentGuide(null);
-              setCopyMessage('');
+              resetPaymentModalState();
             }}
             className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"
           >
