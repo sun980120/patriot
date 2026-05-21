@@ -16,18 +16,20 @@ spring:
     time-zone: Asia/Seoul
 
 server:
-  port: ${PORT:8000}
+  # port: ${PORT:8000}
+  port: ${PORT:8080}
 
 app:
   jwt:
     secret: ${PATRIOT_JWT_SECRET:VGhpc0lzQVBhdHJpb3RCYWNrZW5kSldUU2VjcmV0S2V5Rm9yRGV2ZWxvcG1lbnRPbmx5MTIzNDU2}
     expiration-seconds: ${PATRIOT_JWT_EXPIRATION_SECONDS:43200}
   cors:
+    # allowed-origins: ${PATRIOT_ALLOWED_ORIGINS:https://patriot-phi.vercel.app}
     allowed-origins: ${PATRIOT_ALLOWED_ORIGINS:http://localhost:3000}
   bootstrap:
     super-admin-email: ${PATRIOT_SUPER_ADMIN_EMAIL:woosung9801@gmail.com}
-    super-admin-username: ${PATRIOT_SUPER_ADMIN_USERNAME:woosung9801}
-    super-admin-password: ${PATRIOT_SUPER_ADMIN_PASSWORD:0000}
+    super-admin-username: ${PATRIOT_SUPER_ADMIN_USERNAME:root}
+    super-admin-password: ${PATRIOT_SUPER_ADMIN_PASSWORD:0120}
     super-admin-name: ${PATRIOT_SUPER_ADMIN_NAME:홍우성}
 
 management:

@@ -338,7 +338,15 @@ function MemberRow({
         <div className="mt-2 flex flex-wrap gap-2">
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[role].badge}`}>{role}</span>
           <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
-            {appRole === 'member' ? '회원' : username ?? '관리자'}
+            <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
+              {status === '가입 요청'
+                ? '가입 대기'
+                : appRole === 'super_admin'
+                  ? '최상위 관리자'
+                  : appRole === 'admin'
+                    ? '관리자'
+                    : '회원'}
+            </span>
           </span>
           <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">{status}</span>
         </div>
