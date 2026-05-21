@@ -809,8 +809,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
           <button
             type="button"
             onClick={async () => {
-              await navigator.clipboard.writeText(CLUB_BANK.accountNumber);
-              setCopyMessage('계좌번호가 복사되었습니다.');
+              await navigator.clipboard.writeText(`${CLUB_BANK.bankName} ${CLUB_BANK.accountNumber}`);
+              setCopyMessage('은행 및 계좌번호가 복사되었습니다.');
               setShowBankApps(true);
               setAppMessage('');
             }}
