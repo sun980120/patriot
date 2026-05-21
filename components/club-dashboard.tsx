@@ -38,6 +38,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [actionMessage, setActionMessage] = useState('');
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  const [copyMessage, setCopyMessage] = useState('');
   
   const [paymentGuide, setPaymentGuide] = useState<string | null>(null);
 
@@ -798,17 +799,45 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
           <button
             type="button"
-            onClick={() =>
-              navigator.clipboard.writeText(`${CLUB_BANK.bankName} ${CLUB_BANK.accountNumber}`)
-            }
+            onClick={async () => {
+              await navigator.clipboard.writeText(CLUB_BANK.accountNumber);
+              setCopyMessage('계좌번호가 복사되었습니다.');
+            }}
             className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white"
           >
             계좌번호 복사
           </button>
+          {copyMessage ? (
+              <p className="mt-2 text-center text-sm font-semibold text-emerald-700">
+                {copyMessage}
+              </p>
+            ) : null}
 
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = 'supertoss://';
+              }}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"
+            >
+              토스 열기
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = 'kakaobank://';
+              }}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"
+            >
+              카카오뱅크 열기
+          </button>
           <button
             type="button"
-            onClick={() => setPaymentGuide(null)}
+            onClick={() => {
+              setPaymentGuide(null);
+              setCopyMessage('');
+            }}
             className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"
           >
             닫기
