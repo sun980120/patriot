@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { changePasswordAction, checkUsernameAvailabilityAction, updateProfileAction } from '@/app/actions';
 import type { Profile } from '@/lib/types';
+import DaumPostcodeEmbed from 'react-daum-postcode';
 
 export function AccountSettingsCard({ profile }: { profile: Profile }) {
   const [profileForm, setProfileForm] = useState({
@@ -10,6 +11,9 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
     address: profile.address ?? '',
     birthDate: profile.birth_date ?? '',
   });
+
+  const [detailAddress, setDetailAddress] = useState('');
+  const [openPostcode, setOpenPostcode] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -38,7 +42,12 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
     }
 
     startTransition(async () => {
-      const result = await updateProfileAction(profileForm);
+      const result = await updateProfileAction({
+        ...profileForm,
+        address: detailAddress
+          ? `${profileForm.address}, ${detailAddress}`
+          : profileForm.address,
+      });
       setProfileMessage(result.message ?? (result.ok ? '사용자 정보가 변경되었습니다.' : '사용자 정보 변경에 실패했습니다.'));
     });
   };
@@ -102,19 +111,63 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             </button>
           </div>
           {usernameMessage ? <p className="text-sm text-slate-600">{usernameMessage}</p> : null}
+          <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setOpenPostcode(true)}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            주소 검색
+          </button>
+
           <input
             value={profileForm.address}
-            onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))}
-            type="text"
-            placeholder="주소"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            readOnly
+            placeholder="주소 검색 버튼을 눌러주세요"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:outline-none"
           />
+
           <input
-            value={profileForm.birthDate}
-            onChange={(event) => setProfileForm((current) => ({ ...current, birthDate: event.target.value }))}
-            type="date"
+            value={detailAddress}
+            onChange={(event) => setDetailAddress(event.target.value)}
+            type="text"
+            placeholder="상세 주소"
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
           />
+
+          {openPostcode ? (
+            <div className="overflow-hidden rounded-2xl border border-slate-200">
+              <DaumPostcodeEmbed
+                onComplete={(data) => {
+                  setProfileForm((current) => ({
+                    ...current,
+                    address: data.address,
+                  }));
+
+                  setOpenPostcode(false);
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500">
+              생년월일
+            </label>
+
+            <input
+              value={profileForm.birthDate}
+              onChange={(event) =>
+                setProfileForm((current) => ({
+                  ...current,
+                  birthDate: event.target.value,
+                }))
+              }
+              type="date"
+              max={new Date().toISOString().split('T')[0]}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            />
+          </div>
         </div>
 
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
