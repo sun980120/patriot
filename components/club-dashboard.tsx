@@ -36,7 +36,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [memberSearch, setMemberSearch] = useState('');
   const [financeTab, setFinanceTab] = useState<'income' | 'expense'>('income');
   const [actionMessage, setActionMessage] = useState('');
-  const [isPending, startTransition] = useTransition();
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
   const profile = data.profile;
   const adminMode = isAdmin(profile);
@@ -462,52 +463,179 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
             </div>
           ) : null}
 
-          <div className="mt-6 lg:hidden space-y-4">
-            {rows.length ? rows.map((row) => {
-              const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
-              return (
-                <article key={row.member.id} className={`rounded-[24px] border p-4 shadow-sm ${row.member.member_grade === '준회원' ? 'border-amber-200 bg-amber-50/70' : 'border-slate-200 bg-white'}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">회원 {row.order}</p>
-                      <h3 className="mt-1 text-xl font-black text-slate-900">{row.member.full_name}</h3>
-                    </div>
-                    <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[row.member.member_grade].badge}`}>{row.member.member_grade}</span>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                    <span className="text-sm text-slate-500">총 납부액</span>
-                    <span className="text-lg font-black text-slate-900">{formatCurrency(total)}</span>
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    {row.cells.map((cell) => {
-                      const staff = row.member.member_grade === '간사';
-                      const cellActive = adminMode && !staff;
-                      const paid = Boolean(cell.payment?.paid);
-                      const amount = cell.payment?.charged_amount ?? 0;
-                      const appliedGrade = cell.payment?.applied_grade ?? row.member.member_grade;
+          <div className="mt-6 space-y-4 lg:hidden">
+            {adminMode ? (
+              rows.length ? rows.map((row) => {
+                const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
+                const expanded = expandedMemberId === row.member.id;
 
-                      return (
-                        <button
-                          key={`${row.member.id}-${cell.month}`}
-                          type="button"
-                          disabled={!cellActive}
-                          onClick={() => handleTogglePaid(row.member, cell.month)}
-                          className={`rounded-2xl border px-3 py-4 text-left transition ${buildPaymentButtonClass(staff, paid, cellActive)}`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-black">{cell.month}월</span>
-                            <span className="text-xs font-bold">{staff ? '간사' : paid ? '납부 완료' : '미납'}</span>
-                          </div>
-                          <p className="mt-3 text-xs font-semibold">
-                            {staff ? '면제' : paid ? '완료' : cellActive ? '탭해서 등록' : '납부 전'}
+                return (
+                  <article
+                    key={row.member.id}
+                    className={`rounded-[24px] border p-4 shadow-sm ${
+                      row.member.member_grade === '준회원'
+                        ? 'border-amber-200 bg-amber-50/70'
+                        : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedMemberId((current) =>
+                          current === row.member.id ? null : row.member.id
+                        )
+                      }
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                            회원 {row.order}
                           </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </article>
-              );
-            }) : <EmptyState text="검색된 회원이 없습니다." />}
+
+                          <h3 className="mt-1 text-xl font-black text-slate-900">
+                            {row.member.full_name}
+                          </h3>
+                        </div>
+
+                        <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[row.member.member_grade].badge}`}>
+                          {row.member.member_grade}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                        <span className="text-sm text-slate-500">총 납부액</span>
+                        <span className="text-lg font-black text-slate-900">
+                          {formatCurrency(total)}
+                        </span>
+                      </div>
+
+                      <p className="mt-3 text-center text-xs font-semibold text-slate-400">
+                        {expanded ? '납부 내역 닫기' : '납부 내역 보기'}
+                      </p>
+                    </button>
+
+                    {expanded ? (
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        {row.cells.map((cell) => {
+                          const staff = row.member.member_grade === '간사';
+                          const cellActive = adminMode && !staff;
+                          const paid = Boolean(cell.payment?.paid);
+
+                          return (
+                            <button
+                              key={`${row.member.id}-${cell.month}`}
+                              type="button"
+                              disabled={!cellActive}
+                              onClick={() => handleTogglePaid(row.member, cell.month)}
+                              className={`rounded-2xl border px-3 py-4 text-left transition ${buildPaymentButtonClass(
+                                staff,
+                                paid,
+                                cellActive
+                              )}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-black">
+                                  {cell.month}월
+                                </span>
+
+                                <span className="text-xs font-bold">
+                                  {staff ? '간사' : paid ? '납부 완료' : '미납'}
+                                </span>
+                              </div>
+
+                              <p className="mt-3 text-xs font-semibold">
+                                {staff
+                                  ? '면제'
+                                  : paid
+                                    ? '완료'
+                                    : cellActive
+                                      ? '탭해서 등록'
+                                      : '납부 전'}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              }) : (
+                <EmptyState text="검색된 회원이 없습니다." />
+              )
+            ) : (
+              rows.length ? rows.map((row) => {
+                const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
+
+                return (
+                  <article
+                    key={row.member.id}
+                    className={`rounded-[24px] border p-4 shadow-sm ${
+                      row.member.member_grade === '준회원'
+                        ? 'border-amber-200 bg-amber-50/70'
+                        : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          회원 {row.order}
+                        </p>
+
+                        <h3 className="mt-1 text-xl font-black text-slate-900">
+                          {row.member.full_name}
+                        </h3>
+                      </div>
+
+                      <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[row.member.member_grade].badge}`}>
+                        {row.member.member_grade}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                      <span className="text-sm text-slate-500">총 납부액</span>
+                      <span className="text-lg font-black text-slate-900">
+                        {formatCurrency(total)}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      {row.cells.map((cell) => {
+                        const staff = row.member.member_grade === '간사';
+                        const paid = Boolean(cell.payment?.paid);
+
+                        return (
+                          <div
+                            key={`${row.member.id}-${cell.month}`}
+                            className={`rounded-2xl border px-3 py-4 text-left transition ${buildPaymentButtonClass(
+                              staff,
+                              paid,
+                              false
+                            )}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-black">
+                                {cell.month}월
+                              </span>
+
+                              <span className="text-xs font-bold">
+                                {staff ? '간사' : paid ? '납부 완료' : '미납'}
+                              </span>
+                            </div>
+
+                            <p className="mt-3 text-xs font-semibold">
+                              {staff ? '면제' : paid ? '완료' : '납부 전'}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </article>
+                );
+              }) : (
+                <EmptyState text="검색된 회원이 없습니다." />
+              )
+            )}
           </div>
 
           <div className="mt-6 hidden max-w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white lg:block">
