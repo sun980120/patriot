@@ -47,12 +47,33 @@ export const mockBundle: DashboardBundle = {
     { id: 'p10', fiscal_year_id: fiscal2027, member_id: 'member-3', month: 3, paid: true, charged_amount: 10000, applied_grade: '준회원' }
   ],
   incomes: [
-    { id: 'i1', fiscal_year_id: fiscal2026, label: '세일스포츠', amount: 200000, memo: null },
-    { id: 'i2', fiscal_year_id: fiscal2026, label: '장군당정', amount: 200000, memo: null },
+    { id: 'i1', fiscal_year_id: fiscal2026, charge_group_id: null, label: '세일스포츠', amount: 200000, memo: null },
+    { id: 'i2', fiscal_year_id: fiscal2026, charge_group_id: null, label: '장군당정', amount: 200000, memo: null },
   ],
   expenses: [
-    { id: 'e1', fiscal_year_id: fiscal2026, label: '4, 5월 대관료', amount: 50000, memo: null },
-    { id: 'e2', fiscal_year_id: fiscal2026, label: '유니폼 샘플 보증', amount: 100000, memo: null },
-    { id: 'e3', fiscal_year_id: fiscal2026, label: '유니폼 시안 보증', amount: 50000, memo: null },
+    { id: 'e1', fiscal_year_id: fiscal2026, charge_group_id: null, label: '4, 5월 대관료', amount: 50000, memo: null },
+    { id: 'e2', fiscal_year_id: fiscal2026, charge_group_id: null, label: '유니폼 샘플 보증', amount: 100000, memo: null },
+    { id: 'e3', fiscal_year_id: fiscal2026, charge_group_id: null, label: '유니폼 시안 보증', amount: 50000, memo: null },
+  ],
+  chargeGroups: [
+    {
+      id: 'cg-1',
+      fiscal_year_id: fiscal2026,
+      title: '춘계 대회 참가 분담금',
+      category: 'TOURNAMENT_FEE',
+      event_date: '2026-06-10',
+      support_amount: 200000,
+      actual_cost: null,
+      settlement_completed: false,
+      participant_charge_total: 60000,
+      participant_paid_total: 30000,
+      surplus_amount: 0,
+      memo: '회비에서 일부 지원 후 참가자 추가 분담',
+      created_at: '2026-05-21T10:00:00',
+      participant_charges: [
+        { id: 'mc-1', charge_group_id: 'cg-1', member_id: 'member-1', member_name: '홍우성', member_username: 'hongws', amount: 30000, status: 'PAID', paid_at: '2026-05-21T10:10:00', memo: null },
+        { id: 'mc-2', charge_group_id: 'cg-1', member_id: 'member-2', member_name: '박시하', member_username: 'parksh', amount: 30000, status: 'UNPAID', paid_at: null, memo: null },
+      ],
+    },
   ],
 };

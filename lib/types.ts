@@ -2,6 +2,8 @@ export type AppRole = 'super_admin' | 'admin' | 'member';
 export type MemberGrade = '정회원' | '준회원' | '간사';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 export type GradeSource = 'auto' | 'manual';
+export type AdditionalChargeCategory = 'JOIN_FEE' | 'UNIFORM_FEE' | 'DINNER_FEE' | 'TOURNAMENT_FEE' | 'ETC_FEE';
+export type AdditionalChargeStatus = 'UNPAID' | 'PAID';
 
 export type Profile = {
   id: string;
@@ -38,6 +40,7 @@ export type PaymentRecord = {
 export type IncomeEntry = {
   id: string;
   fiscal_year_id: string;
+  charge_group_id: string | null;
   label: string;
   amount: number;
   memo: string | null;
@@ -46,9 +49,39 @@ export type IncomeEntry = {
 export type ExpenseEntry = {
   id: string;
   fiscal_year_id: string;
+  charge_group_id: string | null;
   label: string;
   amount: number;
   memo: string | null;
+};
+
+export type ParticipantCharge = {
+  id: string;
+  charge_group_id: string;
+  member_id: string;
+  member_name: string;
+  member_username: string | null;
+  amount: number;
+  status: AdditionalChargeStatus;
+  paid_at: string | null;
+  memo: string | null;
+};
+
+export type ChargeGroup = {
+  id: string;
+  fiscal_year_id: string;
+  title: string;
+  category: AdditionalChargeCategory;
+  event_date: string | null;
+  support_amount: number;
+  actual_cost: number | null;
+  settlement_completed: boolean;
+  participant_charge_total: number;
+  participant_paid_total: number;
+  surplus_amount: number;
+  memo: string | null;
+  created_at: string | null;
+  participant_charges: ParticipantCharge[];
 };
 
 export type DashboardBundle = {
@@ -59,4 +92,5 @@ export type DashboardBundle = {
   payments: PaymentRecord[];
   incomes: IncomeEntry[];
   expenses: ExpenseEntry[];
+  chargeGroups: ChargeGroup[];
 };

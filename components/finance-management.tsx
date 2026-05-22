@@ -1,15 +1,41 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  createAdditionalChargeGroupAction,
   createExpenseEntryAction,
   createIncomeEntryAction,
+  deleteAdditionalChargeGroupAction,
   deleteExpenseEntryAction,
   deleteIncomeEntryAction,
+  reopenAdditionalChargeSettlementAction,
+  settleAdditionalChargeSurplusAction,
+  toggleAdditionalChargePaidAction,
 } from '@/app/actions';
+import { HIDDEN_PROFILE_EMAILS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
-import type { DashboardBundle, ExpenseEntry, IncomeEntry } from '@/lib/types';
+import type { AdditionalChargeCategory, ChargeGroup, DashboardBundle, ExpenseEntry, IncomeEntry, ParticipantCharge, Profile } from '@/lib/types';
+import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
+
+const CATEGORY_LABELS: Record<AdditionalChargeCategory, string> = {
+  JOIN_FEE: '가입비',
+  UNIFORM_FEE: '유니폼비',
+  DINNER_FEE: '회식비',
+  TOURNAMENT_FEE: '대회비',
+  ETC_FEE: '기타 비용',
+};
+
+function formatNumberInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('ko-KR');
+}
+
+function parseNumberInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits ? Number(digits) : 0;
+}
 
 export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle; source: 'mock' | 'spring' }) {
   const router = useRouter();
@@ -17,8 +43,34 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const [selectedYearId, setSelectedYearId] = useState(bundle.selectedYear?.id ?? bundle.fiscalYears[0]?.id ?? '');
   const [incomeForm, setIncomeForm] = useState({ label: '', amount: '' });
   const [expenseForm, setExpenseForm] = useState({ label: '', amount: '' });
+  const [chargeForm, setChargeForm] = useState({
+    title: '',
+    category: 'TOURNAMENT_FEE' as AdditionalChargeCategory,
+    eventDate: '',
+    supportAmount: '',
+    amountPerParticipant: '',
+    memo: '',
+    participantIds: [] as string[],
+  });
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [groupSearch, setGroupSearch] = useState('');
+  const [groupParticipantSearch, setGroupParticipantSearch] = useState<Record<string, string>>({});
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+  const [chargeFilter, setChargeFilter] = useState<'all' | 'settlement_pending' | 'settlement_completed'>('all');
+  const [settlementInputs, setSettlementInputs] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
+  const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setData(bundle);
+    setSelectedYearId((current) => {
+      if (bundle.fiscalYears.some((year) => year.id === current)) {
+        return current;
+      }
+      return bundle.selectedYear?.id ?? bundle.fiscalYears[0]?.id ?? '';
+    });
+  }, [bundle]);
 
   const years = data.fiscalYears;
   const selectedYear = years.find((item) => item.id === selectedYearId) ?? years[0];
@@ -30,17 +82,53 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     () => data.expenses.filter((item) => item.fiscal_year_id === selectedYear?.id),
     [data.expenses, selectedYear]
   );
+  const allChargeGroups = useMemo(
+    () => data.chargeGroups.filter((item) => item.fiscal_year_id === selectedYear?.id),
+    [data.chargeGroups, selectedYear]
+  );
+  const chargeGroups = useMemo(() => {
+    const keyword = groupSearch.trim().toLowerCase();
+    const filteredByStatus = allChargeGroups.filter((group) => {
+      if (chargeFilter === 'all') return true;
+      if (chargeFilter === 'settlement_completed') return group.settlement_completed;
+      return !group.settlement_completed;
+    });
+
+    if (!keyword) return filteredByStatus;
+    return filteredByStatus.filter((group) => {
+      const inTitle = group.title.toLowerCase().includes(keyword);
+      const inParticipants = group.participant_charges.some((charge) =>
+        charge.member_name.toLowerCase().includes(keyword) || (charge.member_username ?? '').toLowerCase().includes(keyword)
+      );
+      return inTitle || inParticipants;
+    });
+  }, [allChargeGroups, chargeFilter, groupSearch]);
+  const participantCandidates = useMemo(
+    () => data.profiles.filter((item) => item.approval_status === 'approved' && item.is_active && item.app_role !== 'super_admin' && !HIDDEN_PROFILE_EMAILS.includes((item.email ?? '') as (typeof HIDDEN_PROFILE_EMAILS)[number])),
+    [data.profiles]
+  );
+  const filteredParticipantCandidates = useMemo(() => {
+    const keyword = participantSearch.trim().toLowerCase();
+    if (!keyword) return participantCandidates;
+    return participantCandidates.filter((member) =>
+      member.full_name.toLowerCase().includes(keyword) || (member.username ?? '').toLowerCase().includes(keyword)
+    );
+  }, [participantCandidates, participantSearch]);
+
   const incomeTotal = incomes.reduce((sum, item) => sum + item.amount, 0);
   const expenseTotal = expenses.reduce((sum, item) => sum + item.amount, 0);
+  const extraChargeTotal = allChargeGroups.reduce((sum, group) => sum + group.participant_charge_total, 0);
+  const extraChargePaidTotal = allChargeGroups.reduce((sum, group) => sum + group.participant_paid_total, 0);
 
   const addEntry = (kind: 'income' | 'expense') => {
     if (!selectedYear) return;
 
     const form = kind === 'income' ? incomeForm : expenseForm;
     const label = form.label.trim();
-    const amount = Number(form.amount);
+    const amount = parseNumberInput(form.amount);
 
     if (!label || !amount) {
+      setToastTone('error');
       setMessage('항목명과 금액을 모두 입력해 주세요.');
       return;
     }
@@ -51,6 +139,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
       const entry: IncomeEntry = {
         id: `${selectedYear.id}-income-${Date.now()}`,
         fiscal_year_id: selectedYear.id,
+        charge_group_id: null,
         label,
         amount,
         memo: null,
@@ -63,9 +152,13 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
         startTransition(async () => {
           const result = await createIncomeEntryAction({ fiscalYearId: selectedYear.id, label, amount });
           if (!result.ok) {
+            setToastTone('error');
             setMessage(result.message ?? '세입 추가에 실패했습니다.');
             router.refresh();
+            return;
           }
+          setToastTone('success');
+          setMessage('세입이 추가되었습니다.');
         });
       }
 
@@ -75,6 +168,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     const entry: ExpenseEntry = {
       id: `${selectedYear.id}-expense-${Date.now()}`,
       fiscal_year_id: selectedYear.id,
+      charge_group_id: null,
       label,
       amount,
       memo: null,
@@ -87,9 +181,13 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
       startTransition(async () => {
         const result = await createExpenseEntryAction({ fiscalYearId: selectedYear.id, label, amount });
         if (!result.ok) {
+          setToastTone('error');
           setMessage(result.message ?? '지출 추가에 실패했습니다.');
           router.refresh();
+          return;
         }
+        setToastTone('success');
+        setMessage('지출이 추가되었습니다.');
       });
     }
   };
@@ -108,24 +206,323 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           ? await deleteIncomeEntryAction(id)
           : await deleteExpenseEntryAction(id);
         if (!result.ok) {
+          setToastTone('error');
           setMessage(result.message ?? '항목 삭제에 실패했습니다.');
+          router.refresh();
+          return;
+        }
+        setToastTone('success');
+        setMessage(`${kind === 'income' ? '세입' : '지출'} 항목이 삭제되었습니다.`);
+      });
+    }
+  };
+
+  const toggleParticipant = (memberId: string) => {
+    setChargeForm((current) => ({
+      ...current,
+      participantIds: current.participantIds.includes(memberId)
+        ? current.participantIds.filter((id) => id !== memberId)
+        : [...current.participantIds, memberId],
+    }));
+  };
+
+  const selectAllFilteredParticipants = () => {
+    setChargeForm((current) => ({
+      ...current,
+      participantIds: Array.from(new Set([...current.participantIds, ...filteredParticipantCandidates.map((member) => member.id)])),
+    }));
+  };
+
+  const clearFilteredParticipants = () => {
+    const visibleIds = new Set(filteredParticipantCandidates.map((member) => member.id));
+    setChargeForm((current) => ({
+      ...current,
+      participantIds: current.participantIds.filter((id) => !visibleIds.has(id)),
+    }));
+  };
+
+  const createChargeGroup = () => {
+    if (!selectedYear) return;
+
+    const title = chargeForm.title.trim();
+    const amountPerParticipant = parseNumberInput(chargeForm.amountPerParticipant);
+    const supportAmount = parseNumberInput(chargeForm.supportAmount || '0');
+
+    if (!title || !amountPerParticipant || !chargeForm.participantIds.length) {
+      setToastTone('error');
+      setMessage('이벤트명, 참가자, 1인당 추가 부담금을 모두 입력해 주세요.');
+      return;
+    }
+
+    setMessage('');
+
+    const participants = participantCandidates.filter((member) => chargeForm.participantIds.includes(member.id));
+    const optimisticGroupId = `${selectedYear.id}-charge-group-${Date.now()}`;
+    const optimisticGroup: ChargeGroup = {
+      id: optimisticGroupId,
+      fiscal_year_id: selectedYear.id,
+      title,
+      category: chargeForm.category,
+      event_date: chargeForm.eventDate || null,
+      support_amount: supportAmount,
+      actual_cost: null,
+      settlement_completed: false,
+      participant_charge_total: participants.length * amountPerParticipant,
+      participant_paid_total: 0,
+      surplus_amount: 0,
+      memo: chargeForm.memo || null,
+      created_at: new Date().toISOString(),
+      participant_charges: participants.map((member) => ({
+        id: `${optimisticGroupId}-${member.id}`,
+        charge_group_id: optimisticGroupId,
+        member_id: member.id,
+        member_name: member.full_name,
+        member_username: member.username,
+        amount: amountPerParticipant,
+        status: 'UNPAID',
+        paid_at: null,
+        memo: chargeForm.memo || null,
+      })),
+    };
+
+    setChargeForm({
+      title: '',
+      category: 'TOURNAMENT_FEE',
+      eventDate: '',
+      supportAmount: '',
+      amountPerParticipant: '',
+      memo: '',
+      participantIds: [],
+    });
+    setParticipantSearch('');
+
+    if (source === 'spring') {
+      setToastTone('info');
+      setMessage('추가 비용 이벤트를 생성 중입니다. 생성이 완료되면 목록이 새로고침됩니다.');
+      startTransition(async () => {
+        const result = await createAdditionalChargeGroupAction({
+          fiscalYearId: selectedYear.id,
+          title,
+          category: chargeForm.category,
+          eventDate: chargeForm.eventDate || null,
+          supportAmount,
+          memo: chargeForm.memo || null,
+          participantMemberIds: chargeForm.participantIds,
+          amountPerParticipant,
+        });
+
+        if (!result.ok) {
+          setToastTone('error');
+          setMessage(result.message ?? '추가 비용 이벤트 생성에 실패했습니다.');
+          router.refresh();
+          return;
+        }
+        setToastTone('success');
+        setMessage('추가 비용 이벤트가 생성되었습니다.');
+        router.refresh();
+      });
+      return;
+    }
+
+    setData((current) => ({
+      ...current,
+      chargeGroups: [optimisticGroup, ...current.chargeGroups],
+      expenses: supportAmount > 0
+        ? [
+            {
+              id: `${optimisticGroupId}-support-expense`,
+              fiscal_year_id: selectedYear.id,
+              charge_group_id: optimisticGroupId,
+              label: `${title} 공용 지원`,
+              amount: supportAmount,
+              memo: chargeForm.memo || null,
+            },
+            ...current.expenses,
+          ]
+        : current.expenses,
+    }));
+    setExpandedGroupId(optimisticGroupId);
+  };
+
+  const toggleChargePaid = (chargeGroupId: string, charge: ParticipantCharge, paid: boolean) => {
+    setMessage('');
+    setData((current) => ({
+      ...current,
+      chargeGroups: current.chargeGroups.map((group) => {
+        if (group.id !== chargeGroupId) return group;
+        const nextParticipantCharges: ParticipantCharge[] = group.participant_charges.map((item) =>
+          item.id === charge.id
+            ? { ...item, status: (paid ? 'PAID' : 'UNPAID') as ParticipantCharge['status'], paid_at: paid ? new Date().toISOString() : null }
+            : item
+        );
+        return {
+          ...group,
+          participant_charges: nextParticipantCharges,
+          participant_paid_total: nextParticipantCharges.reduce((sum, item) => sum + (item.status === 'PAID' ? item.amount : 0), 0),
+        };
+      }),
+    }));
+    setToastTone('success');
+    setMessage(`${charge.member_name}님을 ${paid ? '납부 완료' : '미납'}로 처리했습니다.`);
+
+    if (source === 'spring') {
+      startTransition(async () => {
+        const result = await toggleAdditionalChargePaidAction(charge.id, paid);
+        if (!result.ok) {
+          setToastTone('error');
+          setMessage(result.message ?? '추가 비용 납부 상태 변경에 실패했습니다.');
           router.refresh();
         }
       });
     }
   };
 
+  const settleGroupSurplus = (group: ChargeGroup) => {
+    if (isPending) {
+      setToastTone('error');
+      setMessage('납부 상태를 동기화하는 중입니다. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+
+    const unpaidCount = group.participant_charges.filter((charge) => charge.status !== 'PAID').length;
+    if (unpaidCount > 0) {
+      setToastTone('error');
+      setMessage('모든 참가자가 납부 완료된 뒤에만 정산 완료를 진행할 수 있습니다.');
+      return;
+    }
+
+    const actualCost = parseNumberInput(settlementInputs[group.id] ?? '0');
+    if (!Number.isFinite(actualCost) || actualCost < 0) {
+      setToastTone('error');
+      setMessage('실제 구입 비용을 올바르게 입력해 주세요.');
+      return;
+    }
+
+    setMessage('');
+    const nextSurplus = Math.max(group.participant_paid_total - Math.max(actualCost - group.support_amount, 0), 0);
+    setData((current) => ({
+      ...current,
+      expenses: group.support_amount > 0
+        ? [
+            {
+              id: `${group.id}-support-expense`,
+              fiscal_year_id: group.fiscal_year_id,
+              charge_group_id: group.id,
+              label: `${group.title} 공용 지원`,
+              amount: group.support_amount,
+              memo: group.memo,
+            },
+            ...current.expenses.filter((item) => item.charge_group_id !== group.id),
+          ]
+        : current.expenses.filter((item) => item.charge_group_id !== group.id),
+      incomes: nextSurplus > 0
+        ? [{
+            id: `${group.id}-surplus-income`,
+            fiscal_year_id: group.fiscal_year_id,
+            charge_group_id: group.id,
+            label: `${group.title} 잔액 반영`,
+            amount: nextSurplus,
+            memo: '추가 비용 정산 후 남은 금액',
+          }, ...current.incomes.filter((item) => item.charge_group_id !== group.id)]
+        : current.incomes.filter((item) => item.charge_group_id !== group.id),
+      chargeGroups: current.chargeGroups.map((item) =>
+        item.id === group.id
+          ? { ...item, actual_cost: actualCost, settlement_completed: true, surplus_amount: nextSurplus }
+          : item
+      ),
+    }));
+
+    if (source === 'spring') {
+      startTransition(async () => {
+        const result = await settleAdditionalChargeSurplusAction(group.id, actualCost);
+        if (!result.ok) {
+          setToastTone('error');
+          setMessage(result.message ?? '잔액 세입 처리에 실패했습니다.');
+          router.refresh();
+          return;
+        }
+        setToastTone('success');
+        setMessage(`${group.title} 이벤트가 정산 완료되었습니다.`);
+        router.refresh();
+      });
+    }
+  };
+
+  const deleteChargeGroup = (groupId: string) => {
+    setMessage('');
+    setData((current) => ({
+      ...current,
+      chargeGroups: current.chargeGroups.filter((group) => group.id !== groupId),
+      incomes: current.incomes.filter((item) => item.charge_group_id !== groupId),
+      expenses: current.expenses.filter((item) => item.charge_group_id !== groupId),
+    }));
+    setExpandedGroupId((current) => (current === groupId ? null : current));
+
+    if (source === 'spring') {
+      startTransition(async () => {
+        const result = await deleteAdditionalChargeGroupAction(groupId);
+        if (!result.ok) {
+          setToastTone('error');
+          setMessage(result.message ?? '추가 비용 이벤트 삭제에 실패했습니다.');
+          router.refresh();
+          return;
+        }
+        setToastTone('success');
+        setMessage('추가 비용 이벤트가 삭제되었습니다.');
+        router.refresh();
+      });
+    }
+  };
+
+  const reopenSettlement = (group: ChargeGroup) => {
+    setMessage('');
+    setData((current) => ({
+      ...current,
+      chargeGroups: current.chargeGroups.map((item) =>
+        item.id === group.id
+          ? { ...item, actual_cost: null, settlement_completed: false, surplus_amount: 0 }
+          : item
+      ),
+      incomes: current.incomes.filter((item) => item.charge_group_id !== group.id),
+      expenses: current.expenses.filter((item) => item.charge_group_id !== group.id),
+    }));
+    setSettlementInputs((current) => ({ ...current, [group.id]: '' }));
+
+    if (source === 'spring') {
+      startTransition(async () => {
+        const result = await reopenAdditionalChargeSettlementAction(group.id);
+        if (!result.ok) {
+          setToastTone('error');
+          setMessage(result.message ?? '정산 수정 모드 전환에 실패했습니다.');
+          router.refresh();
+          return;
+        }
+        setToastTone('success');
+        setMessage(`${group.title} 이벤트를 다시 수정할 수 있습니다.`);
+        router.refresh();
+      });
+      return;
+    }
+
+    setToastTone('success');
+    setMessage(`${group.title} 이벤트를 다시 수정할 수 있습니다.`);
+  };
+
   return (
-    <div className="space-y-8">
+    <>
+      <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
+      <div className="space-y-8">
       <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
         <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Finance Pages</p>
-        <h2 className="mt-2 text-3xl font-black text-slate-900">세입 / 지출 관리 페이지</h2>
-        <p className="mt-2 text-sm text-slate-500">세입과 지출의 추가, 삭제는 이 페이지에서만 처리합니다. 통합 대시보드에서는 조회만 할 수 있습니다.</p>
+        <h2 className="mt-2 text-3xl font-black text-slate-900">세입 / 지출 / 추가 비용 관리</h2>
+        <p className="mt-2 text-sm text-slate-500">월회비와 분리해서, 대회비·회식비·유니폼비 같은 추가 비용은 이벤트 단위로 생성하고 참가자별로 납부 상태를 관리합니다.</p>
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
             <span className="rounded-full bg-slate-100 px-3 py-2">기준 연도: {selectedYear?.year}년</span>
             <span className="rounded-full bg-slate-100 px-3 py-2">기타 세입 {formatCurrency(incomeTotal)}</span>
             <span className="rounded-full bg-slate-100 px-3 py-2">지출 {formatCurrency(expenseTotal)}</span>
+            <span className="rounded-full bg-slate-100 px-3 py-2">추가 비용 청구 {formatCurrency(extraChargeTotal)}</span>
+            <span className="rounded-full bg-slate-100 px-3 py-2">추가 비용 납부 {formatCurrency(extraChargePaidTotal)}</span>
             <span className="rounded-full bg-slate-100 px-3 py-2">{source === 'spring' ? 'Spring API' : 'Mock'} {isPending ? '동기화 중' : '연결됨'}</span>
           </div>
           <label className="block">
@@ -141,7 +538,237 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
             </select>
           </label>
         </div>
-        {message ? <p className="mt-4 text-sm text-rose-600">{message}</p> : null}
+      </section>
+
+      <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
+        <div className="flex flex-col gap-3 border-b border-slate-200/80 pb-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Additional Charges</p>
+            <h3 className="mt-2 text-xl font-black text-slate-900">대회비 / 회식비 / 유니폼비 정산</h3>
+            <p className="mt-2 text-sm text-slate-500">스크롤 부담을 줄이기 위해 이벤트는 기본 접힘 상태로 보이고, 눌렀을 때만 납부/미납 참가자 목록이 열립니다.</p>
+          </div>
+          <input
+            value={groupSearch}
+            onChange={(event) => setGroupSearch(event.target.value)}
+            type="text"
+            placeholder="이벤트명, 참가자 이름/아이디 검색"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none lg:max-w-sm"
+          />
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <input value={chargeForm.title} onChange={(event) => setChargeForm((current) => ({ ...current, title: event.target.value }))} type="text" placeholder="예: 2026 춘계대회 참가 분담금" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          <select value={chargeForm.category} onChange={(event) => setChargeForm((current) => ({ ...current, category: event.target.value as AdditionalChargeCategory }))} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none">
+            {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <input value={chargeForm.eventDate} onChange={(event) => setChargeForm((current) => ({ ...current, eventDate: event.target.value }))} type="date" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          <input value={chargeForm.supportAmount} onChange={(event) => setChargeForm((current) => ({ ...current, supportAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="회비 공용지원 금액 (없으면 비워두기)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          <input value={chargeForm.amountPerParticipant} onChange={(event) => setChargeForm((current) => ({ ...current, amountPerParticipant: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="1인당 추가 부담금" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          <input value={chargeForm.memo} onChange={(event) => setChargeForm((current) => ({ ...current, memo: event.target.value }))} type="text" placeholder="메모 (선택)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+        </div>
+
+        <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-semibold text-slate-900">참가자 선택</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={participantSearch}
+                onChange={(event) => setParticipantSearch(event.target.value)}
+                type="text"
+                placeholder="이름 또는 아이디 검색"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none"
+              />
+              <button onClick={selectAllFilteredParticipants} type="button" className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:text-brand-800">검색 결과 전체 선택</button>
+              <button onClick={clearFilteredParticipants} type="button" className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:text-rose-600">검색 결과 선택 해제</button>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredParticipantCandidates.map((member) => {
+              const checked = chargeForm.participantIds.includes(member.id);
+              return (
+                <button
+                  key={member.id}
+                  type="button"
+                  onClick={() => toggleParticipant(member.id)}
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${checked ? 'border-brand-500 bg-brand-50 text-brand-900' : 'border-slate-200 bg-white text-slate-600 hover:border-brand-300'}`}
+                >
+                  <p className="font-semibold">{member.full_name}</p>
+                  <p className="mt-1 text-xs">{member.username ?? '아이디 없음'} · {member.member_grade}</p>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600">선택 인원 {chargeForm.participantIds.length}명</span>
+            <button onClick={createChargeGroup} className="rounded-2xl bg-brand-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-brand-800">추가 비용 이벤트 생성</button>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          <button onClick={() => setChargeFilter('all')} className={`rounded-full px-4 py-2 text-sm font-semibold ${chargeFilter === 'all' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>전체</button>
+          <button onClick={() => setChargeFilter('settlement_pending')} className={`rounded-full px-4 py-2 text-sm font-semibold ${chargeFilter === 'settlement_pending' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>미납</button>
+          <button onClick={() => setChargeFilter('settlement_completed')} className={`rounded-full px-4 py-2 text-sm font-semibold ${chargeFilter === 'settlement_completed' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>정산 완료</button>
+        </div>
+
+        <div className="mt-4 space-y-4">
+          {chargeGroups.length ? chargeGroups.map((group) => {
+            const paidCount = group.participant_charges.filter((charge) => charge.status === 'PAID').length;
+            const unpaidCount = group.participant_charges.length - paidCount;
+            const participantKeyword = (groupParticipantSearch[group.id] ?? '').trim().toLowerCase();
+            const visibleParticipantCharges = participantKeyword
+              ? group.participant_charges.filter((charge) =>
+                  charge.member_name.toLowerCase().includes(participantKeyword) ||
+                  (charge.member_username ?? '').toLowerCase().includes(participantKeyword)
+                )
+              : group.participant_charges;
+            const expanded = expandedGroupId === group.id;
+            const canSettle = unpaidCount === 0 && !isPending;
+            return (
+              <div key={group.id} className="rounded-3xl border border-slate-200 bg-white p-5">
+                <button
+                  type="button"
+                  onClick={() => setExpandedGroupId((current) => (current === group.id ? null : group.id))}
+                  className="flex w-full flex-col gap-3 text-left lg:flex-row lg:items-start lg:justify-between"
+                >
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">{CATEGORY_LABELS[group.category]}</p>
+                    <h4 className="mt-1 text-lg font-black text-slate-900">{group.title}</h4>
+                    <p className="mt-2 text-sm text-slate-500">{group.event_date ? `${group.event_date} · ` : ''}공용 지원 {formatCurrency(group.support_amount)}</p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                      <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">참가 {group.participant_charges.length}명</span>
+                      <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">납부 {paidCount}명</span>
+                      <span className="rounded-full bg-amber-100 px-3 py-2 text-amber-900">미납 {unpaidCount}명</span>
+                      <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">총 청구 {formatCurrency(group.participant_charge_total)}</span>
+                      <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">실납부 {formatCurrency(group.participant_paid_total)}</span>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+                    {expanded ? '접기' : '열어서 납부/미납 보기'}
+                  </div>
+                </button>
+
+                {expanded ? (
+                  <div className="mt-4 border-t border-slate-100 pt-4">
+                    <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                      {group.settlement_completed ? (
+                        <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">정산 완료된 이벤트입니다</span>
+                      ) : canSettle ? (
+                        <span className="rounded-full bg-brand-50 px-3 py-2 text-brand-800">전원 납부 완료, 정산 진행 가능</span>
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-3 py-2 text-amber-900">미납 {unpaidCount}명 남아 있어 아직 정산할 수 없습니다</span>
+                      )}
+                    </div>
+                    <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+                      <div className="grid gap-3 sm:grid-cols-[160px_auto_auto]">
+                        <input
+                          value={settlementInputs[group.id] ?? (group.actual_cost !== null ? formatNumberInput(String(group.actual_cost)) : '')}
+                          onChange={(event) => setSettlementInputs((current) => ({ ...current, [group.id]: formatNumberInput(event.target.value) }))}
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="실제 구입 비용"
+                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => settleGroupSurplus(group)}
+                          disabled={!canSettle || group.settlement_completed}
+                          className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                            !canSettle || group.settlement_completed
+                              ? 'cursor-not-allowed bg-slate-200 text-slate-500'
+                              : 'bg-slate-900 text-white hover:bg-slate-800'
+                          }`}
+                        >
+                          남은 금액 세입 처리
+                        </button>
+                        {group.settlement_completed ? (
+                          <button
+                            type="button"
+                            onClick={() => reopenSettlement(group)}
+                            className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-bold text-brand-800 transition hover:bg-brand-100"
+                          >
+                            정산 수정
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => deleteChargeGroup(group.id)}
+                          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-100"
+                        >
+                          이벤트 삭제
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                        <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">실제 비용 {formatCurrency(group.actual_cost ?? 0)}</span>
+                        <span className="rounded-full bg-brand-50 px-3 py-2 text-brand-800">세입 반영 잔액 {formatCurrency(group.surplus_amount)}</span>
+                        {group.settlement_completed ? <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">정산 완료</span> : null}
+                      </div>
+                    </div>
+                    {group.memo ? <p className="mt-3 text-sm text-slate-500">{group.memo}</p> : null}
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-sm text-slate-500">
+                        {participantKeyword
+                          ? `검색 결과 ${visibleParticipantCharges.length}명`
+                          : `참가자 전체 ${group.participant_charges.length}명`}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={groupParticipantSearch[group.id] ?? ''}
+                          onChange={(event) =>
+                            setGroupParticipantSearch((current) => ({
+                              ...current,
+                              [group.id]: event.target.value,
+                            }))
+                          }
+                          type="text"
+                          placeholder="이 이벤트 참가자 검색"
+                          className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none"
+                        />
+                        {(groupParticipantSearch[group.id] ?? '').trim() ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setGroupParticipantSearch((current) => ({
+                                ...current,
+                                [group.id]: '',
+                              }))
+                            }
+                            className="rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:text-slate-900"
+                          >
+                            초기화
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3">
+                      {visibleParticipantCharges.length ? visibleParticipantCharges.map((charge) => {
+                        const paid = charge.status === 'PAID';
+                        return (
+                          <div key={charge.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                              <p className="font-semibold text-slate-900">{charge.member_name}</p>
+                              <p className="mt-1 text-xs text-slate-500">{charge.member_username ?? '아이디 없음'} · {formatCurrency(charge.amount)}</p>
+                            </div>
+                            <button
+                              onClick={() => toggleChargePaid(group.id, charge, !paid)}
+                              disabled={group.settlement_completed || isPending}
+                              className={`rounded-2xl px-4 py-2 text-sm font-bold transition ${group.settlement_completed ? 'cursor-not-allowed bg-slate-200 text-slate-500' : paid ? 'bg-emerald-100 text-emerald-900' : 'bg-white text-slate-600 hover:bg-brand-50 hover:text-brand-800'}`}
+                            >
+                              {group.settlement_completed ? (paid ? '정산 완료' : '정산 종료') : paid ? '납부 완료' : '미납'}
+                            </button>
+                          </div>
+                        );
+                      }) : (
+                        <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+                          검색된 참가자가 없습니다.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          }) : <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">등록된 추가 비용 이벤트가 없습니다.</div>}
+        </div>
       </section>
 
       <div className="grid gap-8 lg:grid-cols-2">
@@ -170,7 +797,8 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           onDelete={(id) => removeEntry('expense', id)}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -216,9 +844,9 @@ function CrudFinanceList({
         />
         <input
           value={amountValue}
-          onChange={(event) => onAmountChange(event.target.value)}
-          type="number"
-          min="0"
+          onChange={(event) => onAmountChange(formatNumberInput(event.target.value))}
+          type="text"
+          inputMode="numeric"
           placeholder="금액"
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
         />

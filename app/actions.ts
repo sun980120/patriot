@@ -293,3 +293,81 @@ export async function deleteExpenseEntryAction(id: string): Promise<ActionResult
   refreshHome();
   return { ok: true };
 }
+
+export async function createAdditionalChargeGroupAction(args: {
+  fiscalYearId: string;
+  title: string;
+  category: 'JOIN_FEE' | 'UNIFORM_FEE' | 'DINNER_FEE' | 'TOURNAMENT_FEE' | 'ETC_FEE';
+  eventDate?: string | null;
+  supportAmount: number;
+  memo?: string | null;
+  participantMemberIds: string[];
+  amountPerParticipant: number;
+}): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/additional-charges', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '추가 비용 이벤트 생성에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function toggleAdditionalChargePaidAction(chargeId: string, paid: boolean): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/additional-charges/${chargeId}/toggle`, {
+    method: 'PATCH',
+    body: JSON.stringify({ paid }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '추가 비용 납부 상태 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+
+export async function settleAdditionalChargeSurplusAction(chargeGroupId: string, actualCost: number): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/additional-charges/${chargeGroupId}/settle`, {
+    method: 'PATCH',
+    body: JSON.stringify({ actualCost }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '잔액 세입 처리에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function reopenAdditionalChargeSettlementAction(chargeGroupId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/additional-charges/${chargeGroupId}/reopen`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '정산 수정 모드 전환에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function deleteAdditionalChargeGroupAction(chargeGroupId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/additional-charges/${chargeGroupId}`, {
+    method: 'DELETE',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '추가 비용 이벤트 삭제에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}

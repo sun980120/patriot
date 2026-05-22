@@ -7,4 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ExpenseEntryRepository extends JpaRepository<ExpenseEntry, UUID> {
     List<ExpenseEntry> findByFiscalYearIdOrderByCreatedAtDesc(UUID fiscalYearId);
+    void deleteByChargeGroupId(UUID chargeGroupId);
 }

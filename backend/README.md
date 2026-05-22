@@ -34,6 +34,7 @@ Authorization: Bearer {token}
 환경변수 미설정 시 아래 값으로 생성됩니다.
 - 이메일: `woosung9801@gmail.com`
 - 비밀번호: `0000`
+- 테스트용 임시 데이터 시드는 기본적으로 꺼져 있습니다. 필요할 때만 `PATRIOT_BOOTSTRAP_SEED_DEMO_DATA=true` 로 켜서 사용합니다.
 
 실운영 전에는 반드시 변경하세요.
 

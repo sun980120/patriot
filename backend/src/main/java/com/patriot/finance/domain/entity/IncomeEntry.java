@@ -21,6 +21,10 @@ public class IncomeEntry extends BaseEntity {
     @JoinColumn(name = "fiscal_year_id", nullable = false)
     private FiscalYear fiscalYear;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "charge_group_id")
+    private ChargeGroup chargeGroup;
+
     @Column(nullable = false)
     private String label;
 
@@ -30,8 +34,9 @@ public class IncomeEntry extends BaseEntity {
     private String memo;
 
     @Builder
-    private IncomeEntry(FiscalYear fiscalYear, String label, Integer amount, String memo) {
+    private IncomeEntry(FiscalYear fiscalYear, ChargeGroup chargeGroup, String label, Integer amount, String memo) {
         this.fiscalYear = fiscalYear;
+        this.chargeGroup = chargeGroup;
         this.label = label;
         this.amount = amount;
         this.memo = memo;

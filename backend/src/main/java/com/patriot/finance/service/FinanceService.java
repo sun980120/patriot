@@ -71,6 +71,7 @@ public class FinanceService {
         return new FinanceEntryResponse(
             entry.getId(),
             entry.getFiscalYear().getId(),
+            entry.getChargeGroup() != null ? entry.getChargeGroup().getId() : null,
             entry.getLabel(),
             entry.getAmount(),
             entry.getMemo(),
@@ -82,6 +83,7 @@ public class FinanceService {
         return new FinanceEntryResponse(
             entry.getId(),
             entry.getFiscalYear().getId(),
+            entry.getChargeGroup() != null ? entry.getChargeGroup().getId() : null,
             entry.getLabel(),
             entry.getAmount(),
             entry.getMemo(),

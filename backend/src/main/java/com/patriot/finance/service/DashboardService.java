@@ -6,14 +6,18 @@ import com.patriot.finance.domain.entity.IncomeEntry;
 import com.patriot.finance.domain.entity.Member;
 import com.patriot.finance.domain.entity.MembershipPayment;
 import com.patriot.finance.domain.enums.AppRole;
+import com.patriot.finance.dto.ChargeGroupResponse;
 import com.patriot.finance.dto.DashboardResponse;
 import com.patriot.finance.dto.FinanceEntryResponse;
 import com.patriot.finance.dto.FiscalYearResponse;
 import com.patriot.finance.dto.MemberSummaryResponse;
+import com.patriot.finance.dto.MemberChargeResponse;
 import com.patriot.finance.dto.PaymentResponse;
+import com.patriot.finance.repository.ChargeGroupRepository;
 import com.patriot.finance.repository.ExpenseEntryRepository;
 import com.patriot.finance.repository.FiscalYearRepository;
 import com.patriot.finance.repository.IncomeEntryRepository;
+import com.patriot.finance.repository.MemberChargeRepository;
 import com.patriot.finance.repository.MemberRepository;
 import com.patriot.finance.repository.MembershipPaymentRepository;
 import java.util.List;
@@ -33,6 +37,8 @@ public class DashboardService {
     private final MembershipPaymentRepository paymentRepository;
     private final IncomeEntryRepository incomeEntryRepository;
     private final ExpenseEntryRepository expenseEntryRepository;
+    private final ChargeGroupRepository chargeGroupRepository;
+    private final MemberChargeRepository memberChargeRepository;
 
     public DashboardResponse load(Member currentMember) {
         List<FiscalYearResponse> fiscalYears = fiscalYearRepository.findAll().stream()
@@ -63,6 +69,10 @@ public class DashboardService {
             .map(this::toResponse)
             .toList();
 
+        List<ChargeGroupResponse> chargeGroups = chargeGroupRepository.findAll().stream()
+            .map(this::toChargeGroupResponse)
+            .toList();
+
         return new DashboardResponse(
             toResponse(currentMember),
             fiscalYears,
@@ -70,7 +80,8 @@ public class DashboardService {
             profiles,
             payments,
             incomes,
-            expenses
+            expenses,
+            chargeGroups
         );
     }
 
@@ -120,6 +131,7 @@ public class DashboardService {
         return new FinanceEntryResponse(
             entry.getId(),
             entry.getFiscalYear().getId(),
+            entry.getChargeGroup() != null ? entry.getChargeGroup().getId() : null,
             entry.getLabel(),
             entry.getAmount(),
             entry.getMemo(),
@@ -131,10 +143,52 @@ public class DashboardService {
         return new FinanceEntryResponse(
             entry.getId(),
             entry.getFiscalYear().getId(),
+            entry.getChargeGroup() != null ? entry.getChargeGroup().getId() : null,
             entry.getLabel(),
             entry.getAmount(),
             entry.getMemo(),
             entry.getCreatedAt()
+        );
+    }
+
+    private ChargeGroupResponse toChargeGroupResponse(com.patriot.finance.domain.entity.ChargeGroup group) {
+        List<MemberChargeResponse> participantCharges = memberChargeRepository.findByChargeGroupIdOrderByCreatedAtDesc(group.getId()).stream()
+            .map(charge -> new MemberChargeResponse(
+                charge.getId(),
+                group.getId(),
+                charge.getMember().getId(),
+                charge.getMember().getFullName(),
+                charge.getMember().getUsername(),
+                charge.getAmount(),
+                charge.getStatus(),
+                charge.getPaidAt(),
+                charge.getMemo()
+            ))
+            .toList();
+        int participantChargeTotal = participantCharges.stream().mapToInt(MemberChargeResponse::amount).sum();
+        int participantPaidTotal = participantCharges.stream()
+            .filter(charge -> charge.status() == com.patriot.finance.domain.enums.AdditionalChargeStatus.PAID)
+            .mapToInt(MemberChargeResponse::amount)
+            .sum();
+        int surplusAmount = group.getActualCost() == null
+            ? 0
+            : Math.max(participantPaidTotal - Math.max(group.getActualCost() - group.getSupportAmount(), 0), 0);
+
+        return new ChargeGroupResponse(
+            group.getId(),
+            group.getFiscalYear().getId(),
+            group.getTitle(),
+            group.getCategory(),
+            group.getEventDate(),
+            group.getSupportAmount(),
+            group.getActualCost(),
+            group.isSettlementCompleted(),
+            participantChargeTotal,
+            participantPaidTotal,
+            surplusAmount,
+            group.getMemo(),
+            group.getCreatedAt(),
+            participantCharges
         );
     }
 }

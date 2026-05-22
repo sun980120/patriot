@@ -7,4 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface IncomeEntryRepository extends JpaRepository<IncomeEntry, UUID> {
     List<IncomeEntry> findByFiscalYearIdOrderByCreatedAtDesc(UUID fiscalYearId);
+    void deleteByChargeGroupId(UUID chargeGroupId);
 }

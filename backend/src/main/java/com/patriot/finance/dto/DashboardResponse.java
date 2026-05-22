@@ -9,6 +9,7 @@ public record DashboardResponse(
     List<MemberSummaryResponse> profiles,
     List<PaymentResponse> payments,
     List<FinanceEntryResponse> incomes,
-    List<FinanceEntryResponse> expenses
+    List<FinanceEntryResponse> expenses,
+    List<ChargeGroupResponse> chargeGroups
 ) {
 }

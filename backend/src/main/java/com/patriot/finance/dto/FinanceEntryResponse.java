@@ -6,6 +6,7 @@ import java.util.UUID;
 public record FinanceEntryResponse(
     UUID id,
     UUID fiscalYearId,
+    UUID chargeGroupId,
     String label,
     Integer amount,
     String memo,

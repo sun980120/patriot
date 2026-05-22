@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { serverApiFetch } from '@/lib/backend-api';
 import { mockBundle } from '@/lib/mock-data';
 import { ACCESS_TOKEN_COOKIE, getBackendBaseUrl } from '@/lib/session';
-import type { DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
+import type { ChargeGroup, DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
 
 type DashboardApiResponse = {
   profile: {
@@ -57,6 +57,7 @@ type DashboardApiResponse = {
   incomes: Array<{
     id: string;
     fiscalYearId: string;
+    chargeGroupId: string | null;
     label: string;
     amount: number;
     memo: string | null;
@@ -64,9 +65,36 @@ type DashboardApiResponse = {
   expenses: Array<{
     id: string;
     fiscalYearId: string;
+    chargeGroupId: string | null;
     label: string;
     amount: number;
     memo: string | null;
+  }>;
+  chargeGroups: Array<{
+    id: string;
+    fiscalYearId: string;
+    title: string;
+    category: ChargeGroup['category'];
+    eventDate: string | null;
+    supportAmount: number;
+    actualCost: number | null;
+    settlementCompleted: boolean;
+    participantChargeTotal: number;
+    participantPaidTotal: number;
+    surplusAmount: number;
+    memo: string | null;
+    createdAt: string | null;
+    participantCharges: Array<{
+      id: string;
+      chargeGroupId: string;
+      memberId: string;
+      memberName: string;
+      memberUsername: string | null;
+      amount: number;
+      status: ChargeGroup['participant_charges'][number]['status'];
+      paidAt: string | null;
+      memo: string | null;
+    }>;
   }>;
 };
 
@@ -120,6 +148,7 @@ function toIncome(row: DashboardApiResponse['incomes'][number]): IncomeEntry {
   return {
     id: row.id,
     fiscal_year_id: row.fiscalYearId,
+    charge_group_id: row.chargeGroupId,
     label: row.label,
     amount: row.amount,
     memo: row.memo,
@@ -130,9 +159,39 @@ function toExpense(row: DashboardApiResponse['expenses'][number]): ExpenseEntry 
   return {
     id: row.id,
     fiscal_year_id: row.fiscalYearId,
+    charge_group_id: row.chargeGroupId,
     label: row.label,
     amount: row.amount,
     memo: row.memo,
+  };
+}
+
+function toChargeGroup(row: DashboardApiResponse['chargeGroups'][number]): ChargeGroup {
+  return {
+    id: row.id,
+    fiscal_year_id: row.fiscalYearId,
+    title: row.title,
+    category: row.category,
+    event_date: row.eventDate,
+    support_amount: row.supportAmount,
+    actual_cost: row.actualCost,
+    settlement_completed: row.settlementCompleted,
+    participant_charge_total: row.participantChargeTotal,
+    participant_paid_total: row.participantPaidTotal,
+    surplus_amount: row.surplusAmount,
+    memo: row.memo,
+    created_at: row.createdAt,
+    participant_charges: row.participantCharges.map((charge) => ({
+      id: charge.id,
+      charge_group_id: charge.chargeGroupId,
+      member_id: charge.memberId,
+      member_name: charge.memberName,
+      member_username: charge.memberUsername,
+      amount: charge.amount,
+      status: charge.status,
+      paid_at: charge.paidAt,
+      memo: charge.memo,
+    })),
   };
 }
 
@@ -173,6 +232,7 @@ export async function loadDashboardData(): Promise<{ mode: 'guest' } | { mode: '
         payments: payload.payments.map(toPayment),
         incomes: payload.incomes.map(toIncome),
         expenses: payload.expenses.map(toExpense),
+        chargeGroups: payload.chargeGroups.map(toChargeGroup),
       },
     };
   } catch {

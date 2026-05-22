@@ -14,11 +14,13 @@ import {
 } from '@/app/actions';
 import { HIDDEN_PROFILE_EMAILS, ROLE_META } from '@/lib/constants';
 import type { DashboardBundle, MemberGrade } from '@/lib/types';
+import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
 export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; source: 'mock' | 'spring' }) {
   const router = useRouter();
   const [data, setData] = useState(bundle);
   const [message, setMessage] = useState('');
+  const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
   const currentProfile = data.profile;
   const isSuperAdmin = currentProfile?.app_role === 'super_admin';
@@ -51,9 +53,13 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       startTransition(async () => {
         const result = await approveMemberAction(memberId);
         if (!result.ok) {
+          setToastTone('error');
           setMessage(result.message ?? '회원 승인에 실패했습니다.');
           router.refresh();
+          return;
         }
+        setToastTone('success');
+        setMessage('회원이 승인되었습니다.');
       });
     }
   };
@@ -69,9 +75,13 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       startTransition(async () => {
         const result = await deactivateMemberAction(memberId);
         if (!result.ok) {
+          setToastTone('error');
           setMessage(result.message ?? '회원 비활성화에 실패했습니다.');
           router.refresh();
+          return;
         }
+        setToastTone('success');
+        setMessage('회원이 비활성화되었습니다.');
       });
     }
   };
@@ -87,9 +97,13 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       startTransition(async () => {
         const result = await activateMemberAction(memberId);
         if (!result.ok) {
+          setToastTone('error');
           setMessage(result.message ?? '회원 활성화에 실패했습니다.');
           router.refresh();
+          return;
         }
+        setToastTone('success');
+        setMessage('회원이 다시 활성화되었습니다.');
       });
     }
   };
@@ -110,9 +124,13 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       startTransition(async () => {
         const result = await promoteToAdminAction(memberId);
         if (!result.ok) {
+          setToastTone('error');
           setMessage(result.message ?? '간사 승격에 실패했습니다.');
           router.refresh();
+          return;
         }
+        setToastTone('success');
+        setMessage('간사로 승격되었습니다.');
       });
     }
   };
@@ -133,9 +151,13 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       startTransition(async () => {
         const result = await adminToPromoteAction(memberId);
         if (!result.ok) {
+          setToastTone('error');
           setMessage(result.message ?? '간사 제거에 실패했습니다.');
           router.refresh();
+          return;
         }
+        setToastTone('success');
+        setMessage('간사 권한이 해제되었습니다.');
       });
     }
   };
@@ -153,9 +175,13 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       startTransition(async () => {
         const result = await rejectMemberAction(memberId);
         if (!result.ok) {
+          setToastTone('error');
           setMessage(result.message ?? '회원 거절에 실패했습니다.');
           router.refresh();
+          return;
         }
+        setToastTone('success');
+        setMessage('가입 요청이 거절되었습니다.');
       });
     }
   };
@@ -166,12 +192,14 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
     if (source === 'spring') {
       startTransition(async () => {
         const result = await resetMemberPasswordAction(memberId);
+        setToastTone(result.ok ? 'success' : 'error');
         setMessage(result.message ?? (result.ok ? '비밀번호가 기본값으로 초기화되었습니다.' : '비밀번호 초기화에 실패했습니다.'));
         if (!result.ok) {
           router.refresh();
         }
       });
     } else {
+      setToastTone('success');
       setMessage('비밀번호가 기본값 0000으로 초기화되었습니다.');
     }
   };
@@ -197,14 +225,15 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
   }
 
   return (
-    <div className="space-y-8">
+    <>
+      <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
+      <div className="space-y-8">
       <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Admin</p>
           <h2 className="mt-2 text-3xl font-black text-slate-900">가입 회원 승인 및 비활성화</h2>
           <p className="mt-2 text-sm text-slate-500">승인 대기 회원과 승인 후 비활성 회원을 분리해서 관리하는 전용 페이지입니다.</p>
         </div>
-        {message ? <p className="mt-4 text-sm text-rose-600">{message}</p> : null}
       </section>
 
       <SectionCard title="승인 대기 회원" emptyText="대기 중인 가입 신청이 없습니다.">
@@ -289,7 +318,8 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
           />
         ))}
       </SectionCard>
-    </div>
+      </div>
+    </>
   );
 }
 
