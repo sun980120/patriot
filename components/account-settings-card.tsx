@@ -102,6 +102,9 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
     });
   };
 
+  const baseInputClass =
+    'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm focus:border-brand-400 focus:outline-none';
+
   return (
     <>
       <FloatingToast
@@ -129,13 +132,13 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
               onChange={(event) => setProfileForm((current) => ({ ...current, username: event.target.value }))}
               type="text"
               placeholder="아이디"
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+              className={baseInputClass}
             />
             <button
               type="button"
               onClick={handleUsernameCheck}
               disabled={pending}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:border-brand-300 hover:text-brand-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-slate-700 transition hover:border-brand-300 hover:text-brand-800 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
             >
               아이디 중복 확인
             </button>
@@ -144,7 +147,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
           <button
             type="button"
             onClick={handleAddressSearch}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-700 transition hover:bg-slate-50 sm:text-sm"
           >
             주소 검색
           </button>
@@ -153,7 +156,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             value={profileForm.address}
             readOnly
             placeholder="주소 검색 버튼을 눌러주세요"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:outline-none"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base focus:outline-none sm:text-sm"
           />
 
           <input
@@ -161,7 +164,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             onChange={(event) => setDetailAddress(event.target.value)}
             type="text"
             placeholder="상세 주소"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            className={baseInputClass}
           />
 
         </div>
@@ -170,18 +173,25 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
               생년월일
             </label>
 
-            <input
-              value={profileForm.birthDate}
-              onChange={(event) =>
-                setProfileForm((current) => ({
-                  ...current,
-                  birthDate: event.target.value,
-                }))
-              }
-              type="date"
-              max={new Date().toISOString().split('T')[0]}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
-            />
+            <div className="relative">
+              {!profileForm.birthDate ? (
+                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base text-slate-400 sm:text-sm">
+                  생년월일 선택
+                </span>
+              ) : null}
+              <input
+                value={profileForm.birthDate}
+                onChange={(event) =>
+                  setProfileForm((current) => ({
+                    ...current,
+                    birthDate: event.target.value,
+                  }))
+                }
+                type="date"
+                max={new Date().toISOString().split('T')[0]}
+                className={`${baseInputClass} min-h-[54px] appearance-none ${profileForm.birthDate ? 'text-slate-900' : 'text-transparent'}`}
+              />
+            </div>
           </div>
         </div>
 
@@ -191,7 +201,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             type="button"
             onClick={handleProfileSave}
             disabled={pending}
-            className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-2xl bg-slate-900 px-4 py-3 text-base font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
           >
             {pending ? '저장 중...' : '사용자 정보 저장'}
           </button>
@@ -210,21 +220,21 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))}
             type="password"
             placeholder="현재 비밀번호"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            className={baseInputClass}
           />
           <input
             value={passwordForm.newPassword}
             onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))}
             type="password"
             placeholder="새 비밀번호"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            className={baseInputClass}
           />
           <input
             value={passwordForm.confirmPassword}
             onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))}
             type="password"
             placeholder="새 비밀번호 확인"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            className={baseInputClass}
           />
         </div>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -233,7 +243,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             type="button"
             onClick={handlePasswordSave}
             disabled={pending}
-            className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-2xl bg-slate-900 px-4 py-3 text-base font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
           >
             {pending ? '변경 중...' : '비밀번호 변경'}
           </button>
