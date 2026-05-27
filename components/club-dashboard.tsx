@@ -106,16 +106,13 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [newYearInput, setNewYearInput] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
   const [financeTab, setFinanceTab] = useState<'income' | 'expense'>('income');
+  const [chargeTab, setChargeTab] = useState<'unpaid' | 'paid'>('unpaid');
   const [actionMessage, setActionMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
-  const [copyMessage, setCopyMessage] = useState('');
-  const [showBankApps, setShowBankApps] = useState(false);
-  const [launchingApp, setLaunchingApp] = useState<'toss' | 'kakaobank' | null>(null);
-  const [appMessage, setAppMessage] = useState('');
-  
-  const [paymentGuide, setPaymentGuide] = useState<string | null>(null);
+  const [launchingAppKey, setLaunchingAppKey] = useState<string | null>(null);
+  const [paymentGuide, setPaymentGuide] = useState<{ memberName: string; amount: number; label: string } | null>(null);
 
   useEffect(() => {
     setData(initialData);
@@ -182,6 +179,37 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const yearExpenses = useMemo(
     () => (selectedYear ? data.expenses.filter((item) => item.fiscal_year_id === selectedYear.id) : []),
     [data.expenses, selectedYear]
+  );
+
+  const memberChargeAssignments = useMemo(() => {
+    if (!selectedYear || !profile) return [];
+
+    return data.chargeGroups
+      .filter((group) => group.fiscal_year_id === selectedYear.id)
+      .flatMap((group) =>
+        group.participant_charges
+          .filter((charge) => charge.member_id === profile.id)
+          .map((charge) => ({
+            charge,
+            group,
+          }))
+      );
+  }, [data.chargeGroups, profile, selectedYear]);
+
+  const filteredChargeAssignments = useMemo(
+    () =>
+      memberChargeAssignments.filter(({ charge }) =>
+        chargeTab === 'unpaid' ? charge.status === 'UNPAID' : charge.status === 'PAID'
+      ),
+    [chargeTab, memberChargeAssignments]
+  );
+
+  const unpaidAssignedChargeTotal = useMemo(
+    () =>
+      memberChargeAssignments
+        .filter(({ charge }) => charge.status === 'UNPAID')
+        .reduce((sum, { charge }) => sum + charge.amount, 0),
+    [memberChargeAssignments]
   );
 
   const summary = useMemo(() => {
@@ -427,10 +455,74 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
     }
   };
   const resetPaymentModalState = () => {
-    setCopyMessage('');
-    setShowBankApps(false);
-    setLaunchingApp(null);
-    setAppMessage('');
+    setLaunchingAppKey(null);
+  };
+
+  const buildTransferText = (amount: number) =>
+    `${CLUB_BANK.bankName} ${CLUB_BANK.accountNumber} ${formatCurrency(amount)}`;
+
+  const handleCopyTransferText = async (amount: number, label: string) => {
+    await navigator.clipboard.writeText(buildTransferText(amount));
+    setToastTone('success');
+    setActionMessage(`${label} 납부 정보가 복사되었습니다.`);
+  };
+
+  const handleOpenBankApp = async (app: 'toss' | 'kakaobank', amount: number, label: string, contextKey: string) => {
+    await handleCopyTransferText(amount, label);
+    const currentKey = `${contextKey}:${app}`;
+    setLaunchingAppKey(currentKey);
+
+    const timeout = setTimeout(() => {
+      setLaunchingAppKey(null);
+      setToastTone('error');
+      setActionMessage(app === 'toss' ? '토스가 설치되어 있지 않거나 실행되지 않았습니다.' : '카카오뱅크가 설치되어 있지 않거나 실행되지 않았습니다.');
+    }, 900);
+
+    window.location.href = app === 'toss' ? 'supertoss://' : 'kakaobank://';
+
+    window.addEventListener(
+      'blur',
+      () => {
+        clearTimeout(timeout);
+        setTimeout(() => {
+          setLaunchingAppKey(null);
+        }, 500);
+      },
+      { once: true }
+    );
+  };
+
+  const handleCopyMonthlyTransfer = async () => {
+    if (!paymentGuide) return;
+    await navigator.clipboard.writeText(buildTransferText(paymentGuide.amount));
+    setToastTone('success');
+    setActionMessage(`${paymentGuide.label} 정보가 복사되었습니다.`);
+  };
+
+  const handleOpenMonthlyBankApp = async (app: 'toss' | 'kakaobank') => {
+    if (!paymentGuide) return;
+    await handleCopyMonthlyTransfer();
+    const currentKey = `payment-guide:${app}`;
+    setLaunchingAppKey(currentKey);
+
+    const timeout = setTimeout(() => {
+      setLaunchingAppKey(null);
+      setToastTone('error');
+      setActionMessage(app === 'toss' ? '토스가 설치되어 있지 않거나 실행되지 않았습니다.' : '카카오뱅크가 설치되어 있지 않거나 실행되지 않았습니다.');
+    }, 900);
+
+    window.location.href = app === 'toss' ? 'supertoss://' : 'kakaobank://';
+
+    window.addEventListener(
+      'blur',
+      () => {
+        clearTimeout(timeout);
+        setTimeout(() => {
+          setLaunchingAppKey(null);
+        }, 500);
+      },
+      { once: true }
+    );
   };
 
   if (!hasFiscalYear) {
@@ -536,6 +628,111 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
           <MetricCard label={`${selectedYear.year}년 총 지출`} value={formatCurrency(summary.totalExpense)} description="해당 연도 지출 합계" />
           <MetricCard label="누적 남은 잔액" value={formatCurrency(summary.cumulativeBalance)} description="전체 누적 세입 - 전체 누적 지출" accent />
         </section>
+
+        {profile ? (
+          <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+            <div className="flex flex-col gap-4 border-b border-slate-200/80 pb-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Additional Charges</p>
+                <h3 className="mt-2 text-xl font-black text-slate-900">추가 비용 안내</h3>
+                <p className="mt-2 text-sm text-slate-500">대회비, 회식비, 유니폼비 등 사용자에게 할당된 금액을 확인하고 바로 이체 앱으로 이동할 수 있습니다.</p>
+              </div>
+              <div className="inline-flex rounded-full bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setChargeTab('unpaid')}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    chargeTab === 'unpaid' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  미납
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChargeTab('paid')}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    chargeTab === 'paid' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  납부 완료
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {filteredChargeAssignments.length ? filteredChargeAssignments.map(({ charge, group }) => (
+                <article key={charge.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
+                        {group.category === 'TOURNAMENT_FEE'
+                          ? '대회비'
+                          : group.category === 'DINNER_FEE'
+                            ? '회식비'
+                            : group.category === 'UNIFORM_FEE'
+                              ? '유니폼비'
+                              : group.category === 'JOIN_FEE'
+                                ? '가입비'
+                                : '기타 비용'}
+                      </p>
+                      <h4 className="mt-2 text-lg font-black text-slate-900">{group.title}</h4>
+                      <p className="mt-2 text-sm text-slate-500">
+                        {group.event_date ?? '날짜 미정'} · {charge.status === 'PAID' ? '납부 완료' : '미납'}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${charge.status === 'PAID' ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'}`}>
+                      {charge.status === 'PAID' ? '납부 완료' : '미납'}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl bg-white px-4 py-3">
+                    <p className="text-sm text-slate-500">납부해야 하는 금액</p>
+                    <p className="mt-1 text-2xl font-black text-slate-900">{formatCurrency(charge.amount)}</p>
+                    <p className="mt-2 text-xs text-slate-500">{buildTransferText(charge.amount)}</p>
+                  </div>
+
+                  {charge.status === 'UNPAID' ? (
+                    <div className="mt-4 space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyTransferText(charge.amount, group.title)}
+                        className="flex h-12 w-full items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-bold leading-none text-white transition hover:bg-slate-800"
+                      >
+                        납부 정보 복사
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBankApp('toss', charge.amount, group.title, charge.id)}
+                        className={`flex h-12 w-full items-center justify-center rounded-2xl px-4 text-sm font-bold leading-none transition ${
+                          launchingAppKey === `${charge.id}:toss`
+                            ? 'bg-blue-600 text-white'
+                            : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {launchingAppKey === `${charge.id}:toss` ? '토스 실행 중...' : '토스 열기'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBankApp('kakaobank', charge.amount, group.title, charge.id)}
+                        className={`flex h-12 w-full items-center justify-center rounded-2xl px-4 text-sm font-bold leading-none transition ${
+                          launchingAppKey === `${charge.id}:kakaobank`
+                            ? 'bg-yellow-400 text-black'
+                            : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {launchingAppKey === `${charge.id}:kakaobank` ? '카카오뱅크 실행 중...' : '카카오뱅크 열기'}
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
+              )) : (
+                <div className="lg:col-span-2">
+                  <EmptyState text={chargeTab === 'unpaid' ? '현재 미납된 추가 비용이 없습니다.' : '납부 완료된 추가 비용이 없습니다.'} />
+                </div>
+              )}
+            </div>
+          </section>
+        ) : null}
 
         <section className="grid min-w-0 gap-6">
           <section className="glass-panel min-w-0 overflow-hidden rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
@@ -789,7 +986,11 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      setPaymentGuide(row.member.full_name)
+                                      setPaymentGuide({
+                                        memberName: row.member.full_name,
+                                        amount: ROLE_META[row.member.member_grade].fee,
+                                        label: `${cell.month}월 회비`,
+                                      })
                                     }
                                     className="w-full rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white"
                                   >
@@ -979,6 +1180,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
         <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-soft">
           <h3 className="text-xl font-black text-slate-900">회비 납부 안내</h3>
+          <p className="mt-2 text-sm text-slate-500">{paymentGuide.memberName} · {paymentGuide.label}</p>
 
           <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
             <p>
@@ -990,112 +1192,45 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
             <p>
               <span className="font-bold text-slate-900">예금주:</span> {CLUB_BANK.accountHolder}
             </p>
+            <p>
+              <span className="font-bold text-slate-900">금액:</span> {formatCurrency(paymentGuide.amount)}
+            </p>
+            <p className="text-xs text-slate-500">{buildTransferText(paymentGuide.amount)}</p>
           </div>
 
           <button
             type="button"
-            onClick={async () => {
-              await navigator.clipboard.writeText(`${CLUB_BANK.bankName} ${CLUB_BANK.accountNumber}`);
-              setCopyMessage('은행 및 계좌번호가 복사되었습니다.');
-              setShowBankApps(true);
-              setAppMessage('');
-            }}
-            className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white"
+            onClick={handleCopyMonthlyTransfer}
+            className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-bold leading-none text-white"
           >
-            계좌번호 복사
+            납부 정보 복사
           </button>
 
-          {copyMessage ? (
-            <p className="mt-2 text-center text-sm font-semibold text-emerald-700">
-              {copyMessage}
-            </p>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => handleOpenMonthlyBankApp('toss')}
+            className={`mt-3 flex h-12 w-full items-center justify-center rounded-2xl px-4 text-sm font-bold leading-none transition ${
+              launchingAppKey === 'payment-guide:toss'
+                ? 'bg-blue-600 text-white'
+                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            {launchingAppKey === 'payment-guide:toss' ? '토스 실행 중...' : '토스 열기'}
+          </button>
 
-          {showBankApps ? (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setLaunchingApp('toss');
-                  setAppMessage('');
-
-                  const timeout = setTimeout(() => {
-                    setLaunchingApp(null);
-                    setAppMessage('토스 앱이 설치되어 있지 않거나 실행되지 않았습니다.');
-                  }, 900);
-
-                  window.location.href = 'supertoss://';
-
-                  window.addEventListener(
-                    'blur',
-                    () => {
-                      clearTimeout(timeout);
-
-                      setTimeout(() => {
-                        setCopyMessage('');
-                        setShowBankApps(false);
-                        setLaunchingApp(null);
-                        setAppMessage('');
-                      }, 500);
-                    },
-                    { once: true }
-                  );
-                }}
-                className={`mt-3 w-full rounded-2xl px-4 py-3 text-sm font-bold transition ${
-                  launchingApp === 'toss'
-                    ? 'bg-blue-600 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                {launchingApp === 'toss' ? '토스 실행 중...' : '토스 열기'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setLaunchingApp('kakaobank');
-                  setAppMessage('');
-
-                  const timeout = setTimeout(() => {
-                    setLaunchingApp(null);
-                    setAppMessage('카카오뱅크 앱이 설치되어 있지 않거나 실행되지 않았습니다.');
-                  }, 900);
-
-                  window.location.href = 'kakaobank://';
-
-                  window.addEventListener(
-                    'blur',
-                    () => {
-                      clearTimeout(timeout);
-
-                      setTimeout(() => {
-                        setCopyMessage('');
-                        setShowBankApps(false);
-                        setLaunchingApp(null);
-                        setAppMessage('');
-                      }, 500);
-                    },
-                    { once: true }
-                  );
-                }}
-                className={`mt-2 w-full rounded-2xl px-4 py-3 text-sm font-bold transition ${
-                  launchingApp === 'kakaobank'
-                    ? 'bg-yellow-400 text-black'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                {launchingApp === 'kakaobank'
-                  ? '카카오뱅크 실행 중...'
-                  : '카카오뱅크 열기'}
-              </button>
-            </>
-          ) : null}
-
-          {appMessage ? (
-            <p className="mt-3 text-center text-sm font-semibold text-rose-600">
-              {appMessage}
-            </p>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => handleOpenMonthlyBankApp('kakaobank')}
+            className={`mt-2 flex h-12 w-full items-center justify-center rounded-2xl px-4 text-sm font-bold leading-none transition ${
+              launchingAppKey === 'payment-guide:kakaobank'
+                ? 'bg-yellow-400 text-black'
+                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            {launchingAppKey === 'payment-guide:kakaobank'
+              ? '카카오뱅크 실행 중...'
+              : '카카오뱅크 열기'}
+          </button>
 
           <button
             type="button"
