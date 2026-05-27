@@ -31,7 +31,7 @@ app:
     super-admin-username: ${PATRIOT_SUPER_ADMIN_USERNAME:root}
     super-admin-password: ${PATRIOT_SUPER_ADMIN_PASSWORD:0120}
     super-admin-name: ${PATRIOT_SUPER_ADMIN_NAME:홍우성}
-    seed-demo-data: ${PATRIOT_BOOTSTRAP_SEED_DEMO_DATA:false}
+    seed-demo-data: ${PATRIOT_BOOTSTRAP_SEED_DEMO_DATA:true}
 
 management:
   endpoints:

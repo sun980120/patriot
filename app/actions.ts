@@ -52,6 +52,7 @@ export async function signupAction(input: {
   username: string;
   phoneNumber: string;
   address: string;
+  addressDetail: string;
   birthDate: string;
   password: string;
 }): Promise<ActionResult> {
@@ -64,7 +65,7 @@ export async function signupAction(input: {
     return { ok: false, message: result.message ?? '가입 신청에 실패했습니다.' };
   }
 
-  return { ok: true, message: '가입 요청이 접수되었습니다. 관리자 승인 후 이용할 수 있습니다.' };
+  return { ok: true, message: '가입 요청이 접수되었습니다.' };
 }
 
 export async function checkUsernameAvailabilityAction(username: string): Promise<ActionResult> {
@@ -82,6 +83,7 @@ export async function checkUsernameAvailabilityAction(username: string): Promise
 export async function updateProfileAction(input: {
   username: string;
   address: string;
+  addressDetail: string;
   birthDate: string;
 }): Promise<ActionResult> {
   const result = await serverApiFetch('/api/auth/profile', {
@@ -148,13 +150,13 @@ export async function approveMemberAction(memberId: string): Promise<ActionResul
   return { ok: true };
 }
 
-export async function rejectMemberAction(memberId: string): Promise<ActionResult> {
-  const result = await serverApiFetch(`/api/admin/members/${memberId}/reject`, {
-    method: 'PATCH',
+export async function deletePendingMemberAction(memberId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/admin/members/${memberId}`, {
+    method: 'DELETE',
   });
 
   if (!result.ok) {
-    return { ok: false, message: result.message ?? '회원 거절에 실패했습니다.' };
+    return { ok: false, message: result.message ?? '가입 신청 삭제에 실패했습니다.' };
   }
 
   refreshHome();
@@ -224,6 +226,20 @@ export async function resetMemberPasswordAction(memberId: string): Promise<Actio
 
   refreshHome();
   return { ok: true, message: result.data?.message ?? '비밀번호가 기본값으로 초기화되었습니다.' };
+}
+
+export async function updateMemberFeeExemptionAction(memberId: string, months: number): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/admin/members/${memberId}/fee-exemption`, {
+    method: 'PATCH',
+    body: JSON.stringify({ months }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '회비 면제 설정 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: '회비 면제 설정이 저장되었습니다.' };
 }
 
 export async function changePasswordAction(input: { currentPassword: string; newPassword: string }): Promise<ActionResult> {
@@ -300,6 +316,7 @@ export async function createAdditionalChargeGroupAction(args: {
   category: 'JOIN_FEE' | 'UNIFORM_FEE' | 'DINNER_FEE' | 'TOURNAMENT_FEE' | 'ETC_FEE';
   eventDate?: string | null;
   supportAmount: number;
+  actualCost: number;
   memo?: string | null;
   participantMemberIds: string[];
   amountPerParticipant: number;
@@ -332,10 +349,9 @@ export async function toggleAdditionalChargePaidAction(chargeId: string, paid: b
 }
 
 
-export async function settleAdditionalChargeSurplusAction(chargeGroupId: string, actualCost: number): Promise<ActionResult> {
+export async function settleAdditionalChargeSurplusAction(chargeGroupId: string): Promise<ActionResult> {
   const result = await serverApiFetch(`/api/additional-charges/${chargeGroupId}/settle`, {
     method: 'PATCH',
-    body: JSON.stringify({ actualCost }),
   });
 
   if (!result.ok) {

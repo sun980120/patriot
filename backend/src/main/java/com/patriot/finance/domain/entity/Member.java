@@ -41,6 +41,8 @@ public class Member extends BaseEntity {
     @Column(nullable = false)
     private String address;
 
+    private String addressDetail;
+
     @Column(nullable = false)
     private LocalDate birthDate;
 
@@ -66,6 +68,11 @@ public class Member extends BaseEntity {
     @Column(nullable = false)
     private LocalDateTime joinedAt;
 
+    @Column(nullable = false)
+    private Integer feeExemptionMonths;
+
+    private LocalDate feeExemptionStartDate;
+
     @Builder
     private Member(
         String email,
@@ -74,13 +81,16 @@ public class Member extends BaseEntity {
         String fullName,
         String phoneNumber,
         String address,
+        String addressDetail,
         LocalDate birthDate,
         AppRole appRole,
         MemberGrade memberGrade,
         GradeSource gradeSource,
         ApprovalStatus approvalStatus,
         boolean active,
-        LocalDateTime joinedAt
+        LocalDateTime joinedAt,
+        Integer feeExemptionMonths,
+        LocalDate feeExemptionStartDate
     ) {
         this.email = email;
         this.username = username;
@@ -88,6 +98,7 @@ public class Member extends BaseEntity {
         this.fullName = fullName;
         this.phoneNumber = phoneNumber;
         this.address = address;
+        this.addressDetail = addressDetail;
         this.birthDate = birthDate;
         this.appRole = appRole;
         this.memberGrade = memberGrade;
@@ -95,6 +106,8 @@ public class Member extends BaseEntity {
         this.approvalStatus = approvalStatus;
         this.active = active;
         this.joinedAt = joinedAt != null ? joinedAt : LocalDateTime.now();
+        this.feeExemptionMonths = feeExemptionMonths == null ? 0 : feeExemptionMonths;
+        this.feeExemptionStartDate = feeExemptionStartDate;
     }
 
     public void approve() {
@@ -145,14 +158,40 @@ public class Member extends BaseEntity {
         this.passwordHash = passwordHash;
     }
 
+    public void updateFeeExemption(Integer months) {
+        int normalized = months == null ? 0 : Math.max(months, 0);
+        this.feeExemptionMonths = normalized;
+
+        if (normalized == 0) {
+            this.feeExemptionStartDate = null;
+            return;
+        }
+
+        if (this.feeExemptionStartDate == null) {
+            this.feeExemptionStartDate = LocalDate.now();
+        }
+    }
+
+    public boolean isExemptFor(int year, int month) {
+        if (this.memberGrade == MemberGrade.간사 || this.feeExemptionMonths == null || this.feeExemptionMonths <= 0 || this.feeExemptionStartDate == null) {
+            return false;
+        }
+
+        int startIndex = this.feeExemptionStartDate.getYear() * 12 + this.feeExemptionStartDate.getMonthValue();
+        int targetIndex = year * 12 + month;
+        int diff = targetIndex - startIndex;
+        return diff >= 0 && diff < this.feeExemptionMonths;
+    }
+
     public void assignUsername(String username) {
         this.username = username;
     }
 
-    public void updateProfile(String username, String address, LocalDate birthDate, MemberGrade memberGrade) {
+    public void updateProfile(String username, String address, String addressDetail, LocalDate birthDate, MemberGrade memberGrade) {
         this.username = username;
         this.email = username;
         this.address = address;
+        this.addressDetail = addressDetail;
         this.birthDate = birthDate;
 
         if (this.gradeSource == GradeSource.AUTO && this.appRole == AppRole.MEMBER) {

@@ -12,12 +12,17 @@ export type Profile = {
   username: string | null;
   phone_number: string | null;
   address: string | null;
+  base_address: string | null;
+  detail_address: string | null;
   birth_date: string | null;
   app_role: AppRole;
   member_grade: MemberGrade;
   grade_source: GradeSource;
   approval_status: ApprovalStatus;
   is_active: boolean;
+  fee_exemption_months: number;
+  fee_exemption_start_date: string | null;
+  joined_at: string | null;
 };
 
 export type FiscalYear = {

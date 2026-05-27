@@ -71,7 +71,6 @@ public class ChargeGroup extends BaseEntity {
     }
 
     public void reopenSettlement() {
-        this.actualCost = null;
         this.settlementCompleted = false;
     }
 }

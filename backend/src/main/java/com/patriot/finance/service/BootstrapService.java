@@ -60,6 +60,7 @@ public class BootstrapService implements CommandLineRunner {
                 .fullName(superAdminName)
                 .phoneNumber("010-0000-0000")
                 .address("서울")
+                .addressDetail(null)
                 .birthDate(LocalDate.of(1998, 1, 20))
                 .appRole(AppRole.SUPER_ADMIN)
                 .memberGrade(MemberGrade.간사)
@@ -105,38 +106,44 @@ public class BootstrapService implements CommandLineRunner {
             .build());
 
         List<Member> seededMembers = new ArrayList<>();
-        seededMembers.add(createAdmin("남대우", "namdw", "010-1111-0001", "천안시 서북구", LocalDate.of(1993, 3, 4)));
-        seededMembers.add(createAdmin("박형주", "parkhj", "010-1111-0002", "천안시 동남구", LocalDate.of(1994, 6, 18)));
+        seededMembers.add(createAdmin("남대우", "namdw", "010-1111-0001", "천안시 서북구 불당로 101", "102동 1203호", LocalDate.of(1996, 3, 4)));
+        seededMembers.add(createAdmin("박형주", "parkhj", "010-1111-0002", "천안시 동남구 청수로 45", "301동 902호", LocalDate.of(1992, 6, 18)));
 
-        seededMembers.add(createMember("홍우성", "hongws", "010-1111-1001", "천안시 불당동", LocalDate.of(1998, 1, 20)));
-        seededMembers.add(createMember("박시하", "parksh", "010-1111-1002", "천안시 쌍용동", LocalDate.of(1997, 11, 21)));
-        seededMembers.add(createMember("이정현", "leejh", "010-1111-1003", "아산시 배방읍", LocalDate.of(1996, 5, 12)));
-        seededMembers.add(createMember("조현민", "johm", "010-1111-1004", "천안시 두정동", LocalDate.of(1995, 9, 2)));
-        seededMembers.add(createMember("김민재", "kimmj", "010-1111-1005", "천안시 청당동", LocalDate.of(1999, 7, 7)));
-        seededMembers.add(createMember("김윤지", "kimyj", "010-1111-1006", "천안시 신불당", LocalDate.of(1998, 10, 30)));
-        seededMembers.add(createMember("양유미", "yangym", "010-1111-1007", "아산시 탕정면", LocalDate.of(1997, 2, 14)));
-        seededMembers.add(createMember("윤서현", "yoonsh", "010-1111-1008", "천안시 성성동", LocalDate.of(1998, 12, 25)));
-        seededMembers.add(createMember("김하랑", "kimhr", "010-1111-1009", "천안시 성정동", LocalDate.of(2009, 7, 14)));
-        seededMembers.add(createMember("임재환", "limjh", "010-1111-1010", "아산시 용화동", LocalDate.of(2008, 6, 10)));
-        seededMembers.add(createMember("김성호", "kimsh1", "010-1111-1011", "천안시 백석동", LocalDate.of(2008, 8, 1)));
-        seededMembers.add(createMember("김성현", "kimsh2", "010-1111-1012", "천안시 청수동", LocalDate.of(2008, 3, 18)));
-        seededMembers.add(createMember("임종우", "limjw", "010-1111-1013", "아산시 모종동", LocalDate.of(2009, 1, 5)));
-        seededMembers.add(createMember("김하진", "kimhj", "010-1111-1014", "천안시 직산읍", LocalDate.of(2009, 11, 9)));
-        seededMembers.add(createMember("이세서", "leess", "010-1111-1015", "천안시 성환읍", LocalDate.of(2010, 4, 19)));
-        seededMembers.add(createMember("박영광", "parkyg", "010-1111-1016", "아산시 음봉면", LocalDate.of(1996, 1, 1)));
-        seededMembers.add(createMember("장준우", "jangjw", "010-1111-1017", "천안시 불당동", LocalDate.of(1997, 7, 17)));
-        seededMembers.add(createMember("태지운", "taejw", "010-1111-1018", "천안시 봉명동", LocalDate.of(1998, 2, 2)));
-        seededMembers.add(createMember("최신화", "choish", "010-1111-1019", "아산시 배방읍", LocalDate.of(2010, 4, 3)));
-        seededMembers.add(createMember("오준혁", "ohjh", "010-1111-1020", "천안시 신방동", LocalDate.of(1998, 8, 8)));
-        seededMembers.add(createMember("정호석", "junghs", "010-1111-1021", "천안시 다가동", LocalDate.of(1995, 3, 13)));
-        seededMembers.add(createMember("문지호", "moonjh", "010-1111-1022", "아산시 탕정면", LocalDate.of(1999, 9, 22)));
-        seededMembers.add(createMember("서민우", "seomw", "010-1111-1023", "천안시 목천읍", LocalDate.of(2008, 5, 16)));
-        seededMembers.add(createMember("하도윤", "hady", "010-1111-1024", "천안시 성거읍", LocalDate.of(2009, 12, 8)));
+        seededMembers.add(createMember("김주엽", "kimjy", "010-1111-1001", "천안시 불당동 불당25로 210", "103동 1102호", LocalDate.of(1997, 1, 20)));
+        seededMembers.add(createMember("이정현", "leejh", "010-1111-1002", "천안시 쌍용동 쌍용대로 88", "2층 201호", LocalDate.of(1999, 11, 21)));
+        seededMembers.add(createMember("홍우성", "hongws", "010-1111-1003", "아산시 배방읍 배방로 77", "105동 1501호", LocalDate.of(1998, 1, 20)));
+        seededMembers.add(createMember("홍정택", "hongjt", "010-1111-1004", "천안시 두정동 두정중11길 19", "502호", LocalDate.of(1998, 9, 2)));
+        seededMembers.add(createMember("김성소", "kimss", "010-1111-1005", "천안시 청당동 청수12로 60", "201동 304호", LocalDate.of(2000, 7, 7)));
+        seededMembers.add(createMember("조현민", "johm", "010-1111-1006", "천안시 신불당 불당33길 14", "1101호", LocalDate.of(2000, 10, 30)));
+        seededMembers.add(createMember("박범진", "parkbj", "010-1111-1007", "아산시 탕정면 탕정면로 31", "104동 904호", LocalDate.of(1998, 1, 17)));
+        seededMembers.add(createMember("김민재", "kimmj", "010-1111-1008", "천안시 성성동 성성8로 120", "110동 1302호", LocalDate.of(2000, 12, 25)));
+        seededMembers.add(createMember("김윤지", "kimyj", "010-1111-1009", "천안시 성정동 성정공원5로 9", "3층", LocalDate.of(2000, 7, 14)));
+        seededMembers.add(createMember("박시하", "parksh", "010-1111-1010", "아산시 용화동 용화로 52", "203동 805호", LocalDate.of(2000, 6, 10)));
+        seededMembers.add(createMember("양유미", "yangym", "010-1111-1011", "천안시 백석동 백석로 201", "101동 407호", LocalDate.of(2000, 8, 1)));
+        seededMembers.add(createMember("윤서현", "yoonsh", "010-1111-1012", "천안시 청수동 청수11로 84", "401동 602호", LocalDate.of(2000, 3, 18)));
+        seededMembers.add(createMember("유래민", "yoorm", "010-1111-1013", "아산시 모종동 모종남로 15", "102동 2002호", LocalDate.of(2000, 1, 5)));
+        seededMembers.add(createMember("주윤지", "jooyj", "010-1111-1014", "천안시 직산읍 직산로 41", "3층 301호", LocalDate.of(2000, 11, 9)));
+        seededMembers.add(createMember("김하랑", "kimhr", "010-1111-1015", "천안시 성환읍 성환시장길 7", "2동 202호", LocalDate.of(2014, 4, 19)));
+        seededMembers.add(createMember("임재환", "limjh", "010-1111-1016", "아산시 음봉면 음봉로 92", "101동 903호", LocalDate.of(2014, 1, 1)));
+        seededMembers.add(createMember("김성호", "kimsh1", "010-1111-1017", "천안시 불당동 불당대로 310", "205동 706호", LocalDate.of(2014, 7, 17)));
+        seededMembers.add(createMember("김성현", "kimsh2", "010-1111-1018", "천안시 봉명동 봉정로 123", "1층", LocalDate.of(2014, 2, 2)));
+        seededMembers.add(createMember("임종우", "limjw", "010-1111-1019", "아산시 배방읍 장재로 18", "106동 1201호", LocalDate.of(2014, 4, 3)));
+        seededMembers.add(createMember("김하진", "kimhj", "010-1111-1020", "천안시 신방동 신방로 77,", "302동 902호", LocalDate.of(2015, 8, 8)));
+        seededMembers.add(createMember("이채서", "leecs", "010-1111-1021", "천안시 다가동 다가말2길 11", "4층 401호", LocalDate.of(2012, 3, 13)));
+        seededMembers.add(createMember("박영광", "parkyg", "010-1111-1022", "아산시 탕정면 탕정로 201", "108동 503호", LocalDate.of(2013, 9, 22)));
+        seededMembers.add(createMember("장준우", "jangjw", "010-1111-1023", "천안시 목천읍 목천로 56", "2층 203호", LocalDate.of(2012, 5, 16)));
+        seededMembers.add(createMember("유보민", "yoobm", "010-1111-1024", "천안시 성거읍 성거길 43", "101동 604호", LocalDate.of(2013, 12, 8)));
 
         incomeEntryRepository.save(IncomeEntry.builder()
             .fiscalYear(year2026)
             .label("세일즈스포츠")
-            .amount(100_000)
+            .amount(200_000)
+            .memo("임시 시드 데이터")
+            .build());
+        incomeEntryRepository.save(IncomeEntry.builder()
+            .fiscalYear(year2026)
+            .label("장군탕정")
+            .amount(200_000)
             .memo("임시 시드 데이터")
             .build());
 
@@ -144,6 +151,12 @@ public class BootstrapService implements CommandLineRunner {
             .fiscalYear(year2026)
             .label("4,5월 대관료")
             .amount(50_000)
+            .memo("임시 시드 데이터")
+            .build());
+        expenseEntryRepository.save(ExpenseEntry.builder()
+            .fiscalYear(year2026)
+            .label("유니폼 샘플 보증")
+            .amount(100_000)
             .memo("임시 시드 데이터")
             .build());
 
@@ -173,39 +186,43 @@ public class BootstrapService implements CommandLineRunner {
         }
     }
 
-    private Member createAdmin(String fullName, String username, String phoneNumber, String address, LocalDate birthDate) {
-        return memberRepository.save(Member.builder()
-            .email(username)
-            .username(username)
-            .passwordHash(passwordEncoder.encode("0000"))
-            .fullName(fullName)
-            .phoneNumber(phoneNumber)
-            .address(address)
-            .birthDate(birthDate)
-            .appRole(AppRole.ADMIN)
-            .memberGrade(MemberGrade.간사)
-            .gradeSource(GradeSource.MANUAL)
-            .approvalStatus(ApprovalStatus.APPROVED)
-            .active(true)
-            .build());
+    private Member createAdmin(String fullName, String username, String phoneNumber, String address, String addressDetail, LocalDate birthDate) {
+        return createOrReuseMember(fullName, username, phoneNumber, address, addressDetail, birthDate, AppRole.ADMIN, MemberGrade.간사, GradeSource.MANUAL);
     }
 
-    private Member createMember(String fullName, String username, String phoneNumber, String address, LocalDate birthDate) {
+    private Member createMember(String fullName, String username, String phoneNumber, String address, String addressDetail, LocalDate birthDate) {
         MemberGrade grade = birthDate.isAfter(LocalDate.of(2007, 12, 31)) ? MemberGrade.준회원 : MemberGrade.정회원;
-        return memberRepository.save(Member.builder()
-            .email(username)
-            .username(username)
-            .passwordHash(passwordEncoder.encode("0000"))
-            .fullName(fullName)
-            .phoneNumber(phoneNumber)
-            .address(address)
-            .birthDate(birthDate)
-            .appRole(AppRole.MEMBER)
-            .memberGrade(grade)
-            .gradeSource(GradeSource.AUTO)
-            .approvalStatus(ApprovalStatus.APPROVED)
-            .active(true)
-            .build());
+        return createOrReuseMember(fullName, username, phoneNumber, address, addressDetail, birthDate, AppRole.MEMBER, grade, GradeSource.AUTO);
+    }
+
+    private Member createOrReuseMember(
+        String fullName,
+        String username,
+        String phoneNumber,
+        String address,
+        String addressDetail,
+        LocalDate birthDate,
+        AppRole appRole,
+        MemberGrade grade,
+        GradeSource gradeSource
+    ) {
+        return memberRepository.findByUsername(username)
+            .or(() -> memberRepository.findByEmail(username))
+            .orElseGet(() -> memberRepository.save(Member.builder()
+                .email(username)
+                .username(username)
+                .passwordHash(passwordEncoder.encode("0000"))
+                .fullName(fullName)
+                .phoneNumber(phoneNumber)
+                .address(address)
+                .addressDetail(addressDetail)
+                .birthDate(birthDate)
+                .appRole(appRole)
+                .memberGrade(grade)
+                .gradeSource(gradeSource)
+                .approvalStatus(ApprovalStatus.APPROVED)
+                .active(true)
+                .build()));
     }
 
     private int feeFor(MemberGrade grade) {

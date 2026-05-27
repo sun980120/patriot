@@ -8,11 +8,11 @@ import DaumPostcodeEmbed from 'react-daum-postcode';
 export function AccountSettingsCard({ profile }: { profile: Profile }) {
   const [profileForm, setProfileForm] = useState({
     username: profile.username ?? '',
-    address: profile.address ?? '',
+    address: profile.base_address ?? profile.address ?? '',
     birthDate: profile.birth_date ?? '',
   });
 
-  const [detailAddress, setDetailAddress] = useState('');
+  const [detailAddress, setDetailAddress] = useState(profile.detail_address ?? '');
   const [openPostcode, setOpenPostcode] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -44,9 +44,8 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
     startTransition(async () => {
       const result = await updateProfileAction({
         ...profileForm,
-        address: detailAddress
-          ? `${profileForm.address}, ${detailAddress}`
-          : profileForm.address,
+        address: profileForm.address,
+        addressDetail: detailAddress,
       });
       setProfileMessage(result.message ?? (result.ok ? '사용자 정보가 변경되었습니다.' : '사용자 정보 변경에 실패했습니다.'));
     });

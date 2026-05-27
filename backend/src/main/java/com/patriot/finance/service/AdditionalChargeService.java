@@ -62,6 +62,7 @@ public class AdditionalChargeService {
             .category(request.category())
             .eventDate(request.eventDate())
             .supportAmount(request.supportAmount())
+            .actualCost(request.actualCost())
             .memo(request.memo())
             .build());
 
@@ -90,7 +91,7 @@ public class AdditionalChargeService {
     }
 
     @Transactional
-    public ChargeGroupResponse settleSurplus(UUID chargeGroupId, Integer actualCost) {
+    public ChargeGroupResponse settleSurplus(UUID chargeGroupId) {
         ChargeGroup group = chargeGroupRepository.findById(chargeGroupId)
             .orElseThrow(() -> new IllegalArgumentException("추가 비용 이벤트를 찾을 수 없습니다."));
 
@@ -101,23 +102,40 @@ public class AdditionalChargeService {
             throw new IllegalArgumentException("미납 참가자가 남아 있어 정산 완료를 진행할 수 없습니다.");
         }
 
+        if (group.getActualCost() == null || group.getActualCost() <= 0) {
+            throw new IllegalArgumentException("총 지출 금액이 없어 정산을 진행할 수 없습니다.");
+        }
+
         int participantPaidTotal = memberChargeRepository.findByChargeGroupIdOrderByCreatedAtDesc(group.getId()).stream()
             .filter(charge -> charge.getStatus() == AdditionalChargeStatus.PAID)
             .mapToInt(MemberCharge::getAmount)
             .sum();
 
-        int remainingCostForParticipants = Math.max(actualCost - group.getSupportAmount(), 0);
+        int actualCost = group.getActualCost();
+        int supportAmount = group.getSupportAmount();
+        int participantExpenseAmount = Math.max(actualCost - supportAmount, 0);
+        int remainingCostForParticipants = participantExpenseAmount;
         int surplus = participantPaidTotal - remainingCostForParticipants;
 
         expenseEntryRepository.deleteByChargeGroupId(group.getId());
         incomeEntryRepository.deleteByChargeGroupId(group.getId());
 
-        if (group.getSupportAmount() > 0) {
+        if (supportAmount > 0) {
             expenseEntryRepository.save(ExpenseEntry.builder()
                 .fiscalYear(group.getFiscalYear())
                 .chargeGroup(group)
                 .label(group.getTitle() + " 공용 지원")
-                .amount(group.getSupportAmount())
+                .amount(supportAmount)
+                .memo(group.getMemo())
+                .build());
+        }
+
+        if (participantExpenseAmount > 0) {
+            expenseEntryRepository.save(ExpenseEntry.builder()
+                .fiscalYear(group.getFiscalYear())
+                .chargeGroup(group)
+                .label(group.getTitle() + " 나머지 구매비")
+                .amount(participantExpenseAmount)
                 .memo(group.getMemo())
                 .build());
         }

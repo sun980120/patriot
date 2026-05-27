@@ -2,13 +2,17 @@ package com.patriot.finance.controller;
 
 import com.patriot.finance.dto.MemberSummaryResponse;
 import com.patriot.finance.dto.MessageResponse;
+import com.patriot.finance.dto.UpdateFeeExemptionRequest;
 import com.patriot.finance.service.MemberService;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -29,9 +33,9 @@ public class AdminController {
         return memberService.approve(memberId);
     }
 
-    @PatchMapping("/{memberId}/reject")
-    public MemberSummaryResponse reject(@PathVariable UUID memberId) {
-        return memberService.reject(memberId);
+    @DeleteMapping("/{memberId}")
+    public MessageResponse deletePendingMember(@PathVariable UUID memberId) {
+        return memberService.deletePendingMember(memberId);
     }
 
     @PatchMapping("/{memberId}/deactivate")
@@ -57,5 +61,10 @@ public class AdminController {
     @PatchMapping("/{memberId}/reset-password")
     public MessageResponse resetPassword(@PathVariable UUID memberId) {
         return memberService.resetPassword(memberId);
+    }
+
+    @PatchMapping("/{memberId}/fee-exemption")
+    public MemberSummaryResponse updateFeeExemption(@PathVariable UUID memberId, @Valid @RequestBody UpdateFeeExemptionRequest request) {
+        return memberService.updateFeeExemption(memberId, request.months());
     }
 }

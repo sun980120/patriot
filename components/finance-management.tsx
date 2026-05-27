@@ -48,7 +48,8 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     category: 'TOURNAMENT_FEE' as AdditionalChargeCategory,
     eventDate: '',
     supportAmount: '',
-    amountPerParticipant: '',
+    totalExpenseAmount: '',
+    roundingUnit: '1000' as '1' | '10' | '100' | '1000',
     memo: '',
     participantIds: [] as string[],
   });
@@ -56,8 +57,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const [groupSearch, setGroupSearch] = useState('');
   const [groupParticipantSearch, setGroupParticipantSearch] = useState<Record<string, string>>({});
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
-  const [chargeFilter, setChargeFilter] = useState<'all' | 'settlement_pending' | 'settlement_completed'>('all');
-  const [settlementInputs, setSettlementInputs] = useState<Record<string, string>>({});
+  const [chargeFilter, setChargeFilter] = useState<'settlement_pending' | 'settlement_completed'>('settlement_pending');
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
@@ -89,7 +89,6 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const chargeGroups = useMemo(() => {
     const keyword = groupSearch.trim().toLowerCase();
     const filteredByStatus = allChargeGroups.filter((group) => {
-      if (chargeFilter === 'all') return true;
       if (chargeFilter === 'settlement_completed') return group.settlement_completed;
       return !group.settlement_completed;
     });
@@ -119,6 +118,21 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const expenseTotal = expenses.reduce((sum, item) => sum + item.amount, 0);
   const extraChargeTotal = allChargeGroups.reduce((sum, group) => sum + group.participant_charge_total, 0);
   const extraChargePaidTotal = allChargeGroups.reduce((sum, group) => sum + group.participant_paid_total, 0);
+  const selectedParticipantCount = chargeForm.participantIds.length;
+  const supportAmountPreview = parseNumberInput(chargeForm.supportAmount || '0');
+  const totalExpenseAmountPreview = parseNumberInput(chargeForm.totalExpenseAmount || '0');
+  const roundingUnitPreview = Number(chargeForm.roundingUnit || '1000');
+  const participantExpenseBase =
+    selectedParticipantCount > 0 ? Math.max(totalExpenseAmountPreview - supportAmountPreview, 0) / selectedParticipantCount : 0;
+  const calculatedAmountPerParticipant =
+    selectedParticipantCount > 0 && totalExpenseAmountPreview > 0
+      ? Math.ceil(participantExpenseBase / roundingUnitPreview) * roundingUnitPreview
+      : 0;
+  const calculatedParticipantChargeTotal = calculatedAmountPerParticipant * selectedParticipantCount;
+  const calculatedSurplusPreview = Math.max(
+    calculatedParticipantChargeTotal - Math.max(totalExpenseAmountPreview - supportAmountPreview, 0),
+    0
+  );
 
   const addEntry = (kind: 'income' | 'expense') => {
     if (!selectedYear) return;
@@ -245,12 +259,19 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     if (!selectedYear) return;
 
     const title = chargeForm.title.trim();
-    const amountPerParticipant = parseNumberInput(chargeForm.amountPerParticipant);
+    const amountPerParticipant = calculatedAmountPerParticipant;
     const supportAmount = parseNumberInput(chargeForm.supportAmount || '0');
+    const totalExpenseAmount = parseNumberInput(chargeForm.totalExpenseAmount || '0');
 
-    if (!title || !amountPerParticipant || !chargeForm.participantIds.length) {
+    if (!title || !chargeForm.participantIds.length || !totalExpenseAmount) {
       setToastTone('error');
-      setMessage('이벤트명, 참가자, 1인당 추가 부담금을 모두 입력해 주세요.');
+      setMessage('이벤트명, 참가자, 총 지출 금액을 모두 입력해 주세요.');
+      return;
+    }
+
+    if (!amountPerParticipant) {
+      setToastTone('error');
+      setMessage('선택 인원 기준으로 1인당 분담금을 계산할 수 없습니다.');
       return;
     }
 
@@ -265,7 +286,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
       category: chargeForm.category,
       event_date: chargeForm.eventDate || null,
       support_amount: supportAmount,
-      actual_cost: null,
+      actual_cost: totalExpenseAmount,
       settlement_completed: false,
       participant_charge_total: participants.length * amountPerParticipant,
       participant_paid_total: 0,
@@ -290,7 +311,8 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
       category: 'TOURNAMENT_FEE',
       eventDate: '',
       supportAmount: '',
-      amountPerParticipant: '',
+      totalExpenseAmount: '',
+      roundingUnit: '1000',
       memo: '',
       participantIds: [],
     });
@@ -306,6 +328,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           category: chargeForm.category,
           eventDate: chargeForm.eventDate || null,
           supportAmount,
+          actualCost: totalExpenseAmount,
           memo: chargeForm.memo || null,
           participantMemberIds: chargeForm.participantIds,
           amountPerParticipant,
@@ -327,19 +350,6 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     setData((current) => ({
       ...current,
       chargeGroups: [optimisticGroup, ...current.chargeGroups],
-      expenses: supportAmount > 0
-        ? [
-            {
-              id: `${optimisticGroupId}-support-expense`,
-              fiscal_year_id: selectedYear.id,
-              charge_group_id: optimisticGroupId,
-              label: `${title} 공용 지원`,
-              amount: supportAmount,
-              memo: chargeForm.memo || null,
-            },
-            ...current.expenses,
-          ]
-        : current.expenses,
     }));
     setExpandedGroupId(optimisticGroupId);
   };
@@ -391,30 +401,46 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
       return;
     }
 
-    const actualCost = parseNumberInput(settlementInputs[group.id] ?? '0');
-    if (!Number.isFinite(actualCost) || actualCost < 0) {
+    const actualCost = group.actual_cost ?? 0;
+    if (!Number.isFinite(actualCost) || actualCost <= 0) {
       setToastTone('error');
-      setMessage('실제 구입 비용을 올바르게 입력해 주세요.');
+      setMessage('총 지출 금액이 없어 정산을 진행할 수 없습니다.');
       return;
     }
 
     setMessage('');
     const nextSurplus = Math.max(group.participant_paid_total - Math.max(actualCost - group.support_amount, 0), 0);
+    const supportExpenseAmount = group.support_amount;
+    const participantExpenseAmount = Math.max(actualCost - supportExpenseAmount, 0);
     setData((current) => ({
       ...current,
-      expenses: group.support_amount > 0
-        ? [
-            {
-              id: `${group.id}-support-expense`,
-              fiscal_year_id: group.fiscal_year_id,
-              charge_group_id: group.id,
-              label: `${group.title} 공용 지원`,
-              amount: group.support_amount,
-              memo: group.memo,
-            },
-            ...current.expenses.filter((item) => item.charge_group_id !== group.id),
-          ]
-        : current.expenses.filter((item) => item.charge_group_id !== group.id),
+      expenses: [
+        ...(supportExpenseAmount > 0
+          ? [
+              {
+                id: `${group.id}-support-expense`,
+                fiscal_year_id: group.fiscal_year_id,
+                charge_group_id: group.id,
+                label: `${group.title} 공용 지원`,
+                amount: supportExpenseAmount,
+                memo: group.memo,
+              } as ExpenseEntry,
+            ]
+          : []),
+        ...(participantExpenseAmount > 0
+          ? [
+              {
+                id: `${group.id}-participant-expense`,
+                fiscal_year_id: group.fiscal_year_id,
+                charge_group_id: group.id,
+                label: `${group.title} 나머지 구매비`,
+                amount: participantExpenseAmount,
+                memo: group.memo,
+              } as ExpenseEntry,
+            ]
+          : []),
+        ...current.expenses.filter((item) => item.charge_group_id !== group.id),
+      ],
       incomes: nextSurplus > 0
         ? [{
             id: `${group.id}-surplus-income`,
@@ -434,7 +460,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
 
     if (source === 'spring') {
       startTransition(async () => {
-        const result = await settleAdditionalChargeSurplusAction(group.id, actualCost);
+        const result = await settleAdditionalChargeSurplusAction(group.id);
         if (!result.ok) {
           setToastTone('error');
           setMessage(result.message ?? '잔액 세입 처리에 실패했습니다.');
@@ -480,13 +506,12 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
       ...current,
       chargeGroups: current.chargeGroups.map((item) =>
         item.id === group.id
-          ? { ...item, actual_cost: null, settlement_completed: false, surplus_amount: 0 }
+          ? { ...item, settlement_completed: false, surplus_amount: 0 }
           : item
       ),
       incomes: current.incomes.filter((item) => item.charge_group_id !== group.id),
       expenses: current.expenses.filter((item) => item.charge_group_id !== group.id),
     }));
-    setSettlementInputs((current) => ({ ...current, [group.id]: '' }));
 
     if (source === 'spring') {
       startTransition(async () => {
@@ -563,8 +588,42 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           </select>
           <input value={chargeForm.eventDate} onChange={(event) => setChargeForm((current) => ({ ...current, eventDate: event.target.value }))} type="date" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
           <input value={chargeForm.supportAmount} onChange={(event) => setChargeForm((current) => ({ ...current, supportAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="회비 공용지원 금액 (없으면 비워두기)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
-          <input value={chargeForm.amountPerParticipant} onChange={(event) => setChargeForm((current) => ({ ...current, amountPerParticipant: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="1인당 추가 부담금" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          <input value={chargeForm.totalExpenseAmount} onChange={(event) => setChargeForm((current) => ({ ...current, totalExpenseAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="총 지출 금액" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          <select
+            value={chargeForm.roundingUnit}
+            onChange={(event) =>
+              setChargeForm((current) => ({
+                ...current,
+                roundingUnit: event.target.value as '1' | '10' | '100' | '1000',
+              }))
+            }
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+          >
+            <option value="1">1원 단위</option>
+            <option value="10">10원 올림</option>
+            <option value="100">100원 올림</option>
+            <option value="1000">1,000원 올림</option>
+          </select>
           <input value={chargeForm.memo} onChange={(event) => setChargeForm((current) => ({ ...current, memo: event.target.value }))} type="text" placeholder="메모 (선택)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+        </div>
+
+        <div className="mt-4 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">선택 인원</p>
+            <p className="mt-2 text-lg font-black text-slate-900">{selectedParticipantCount}명</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">1인당 자동 분담금</p>
+            <p className="mt-2 text-lg font-black text-slate-900">{formatCurrency(calculatedAmountPerParticipant)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">총 청구 예상</p>
+            <p className="mt-2 text-lg font-black text-slate-900">{formatCurrency(calculatedParticipantChargeTotal)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">예상 잔액 세입</p>
+            <p className="mt-2 text-lg font-black text-slate-900">{formatCurrency(calculatedSurplusPreview)}</p>
+          </div>
         </div>
 
         <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
@@ -605,7 +664,6 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2">
-          <button onClick={() => setChargeFilter('all')} className={`rounded-full px-4 py-2 text-sm font-semibold ${chargeFilter === 'all' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>전체</button>
           <button onClick={() => setChargeFilter('settlement_pending')} className={`rounded-full px-4 py-2 text-sm font-semibold ${chargeFilter === 'settlement_pending' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>미납</button>
           <button onClick={() => setChargeFilter('settlement_completed')} className={`rounded-full px-4 py-2 text-sm font-semibold ${chargeFilter === 'settlement_completed' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>정산 완료</button>
         </div>
@@ -659,15 +717,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                       )}
                     </div>
                     <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
-                      <div className="grid gap-3 sm:grid-cols-[160px_auto_auto]">
-                        <input
-                          value={settlementInputs[group.id] ?? (group.actual_cost !== null ? formatNumberInput(String(group.actual_cost)) : '')}
-                          onChange={(event) => setSettlementInputs((current) => ({ ...current, [group.id]: formatNumberInput(event.target.value) }))}
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="실제 구입 비용"
-                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
-                        />
+                      <div className="grid gap-3 sm:grid-cols-[auto_auto]">
                         <button
                           type="button"
                           onClick={() => settleGroupSurplus(group)}
@@ -698,7 +748,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                        <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">실제 비용 {formatCurrency(group.actual_cost ?? 0)}</span>
+                        <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">총 지출 {formatCurrency(group.actual_cost ?? 0)}</span>
                         <span className="rounded-full bg-brand-50 px-3 py-2 text-brand-800">세입 반영 잔액 {formatCurrency(group.surplus_amount)}</span>
                         {group.settlement_completed ? <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">정산 완료</span> : null}
                       </div>

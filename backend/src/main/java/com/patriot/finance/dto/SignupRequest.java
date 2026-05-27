@@ -10,6 +10,7 @@ public record SignupRequest(
     @NotBlank String password,
     @NotBlank String phoneNumber,
     @NotBlank String address,
+    String addressDetail,
     @NotNull LocalDate birthDate
 ) {
 }

@@ -5,6 +5,7 @@ import com.patriot.finance.domain.enums.ApprovalStatus;
 import com.patriot.finance.domain.enums.GradeSource;
 import com.patriot.finance.domain.enums.MemberGrade;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record MemberSummaryResponse(
@@ -14,11 +15,15 @@ public record MemberSummaryResponse(
     String username,
     String phoneNumber,
     String address,
+    String addressDetail,
     LocalDate birthDate,
     AppRole appRole,
     MemberGrade memberGrade,
     GradeSource gradeSource,
     ApprovalStatus approvalStatus,
-    boolean active
+    boolean active,
+    Integer feeExemptionMonths,
+    LocalDate feeExemptionStartDate,
+    LocalDateTime joinedAt
 ) {
 }

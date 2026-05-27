@@ -9,6 +9,8 @@ import com.patriot.finance.dto.TogglePaymentRequest;
 import com.patriot.finance.repository.FiscalYearRepository;
 import com.patriot.finance.repository.MemberRepository;
 import com.patriot.finance.repository.MembershipPaymentRepository;
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +50,10 @@ public class PaymentService {
                 .appliedGrade(member.getMemberGrade())
                 .build());
 
+        if (isFeeExempt(member, fiscalYear.getYear(), request.month())) {
+            throw new IllegalArgumentException("회비 면제 기간에는 납부 처리할 수 없습니다.");
+        }
+
         boolean nextPaid = !payment.isPaid();
         MemberGrade appliedGrade = member.getMemberGrade();
         int amount = feeFor(appliedGrade);
@@ -73,5 +79,56 @@ public class PaymentService {
             case 준회원 -> 10_000;
             case 간사 -> 0;
         };
+    }
+
+    private boolean isFeeExempt(Member member, int targetYear, int targetMonth) {
+        if (
+            member.getMemberGrade() == MemberGrade.간사 ||
+            member.getFeeExemptionMonths() == null ||
+            member.getFeeExemptionMonths() <= 0 ||
+            member.getFeeExemptionStartDate() == null
+        ) {
+            return false;
+        }
+
+        List<FiscalYear> fiscalYears = fiscalYearRepository.findAll().stream()
+            .sorted(Comparator.comparing(FiscalYear::getYear))
+            .toList();
+        List<MembershipPayment> memberPayments = paymentRepository.findByMemberId(member.getId());
+
+        int remainingExemptions = member.getFeeExemptionMonths();
+
+        for (FiscalYear year : fiscalYears) {
+            for (Integer month : year.getVisibleMonths()) {
+                LocalDate currentMonth = LocalDate.of(year.getYear(), month, 1);
+                if (currentMonth.isBefore(member.getFeeExemptionStartDate().withDayOfMonth(1))) {
+                    continue;
+                }
+
+                MembershipPayment payment = memberPayments.stream()
+                    .filter(item -> item.getFiscalYear().getId().equals(year.getId()) && item.getMonth().equals(month))
+                    .findFirst()
+                    .orElse(null);
+
+                if (payment != null && payment.isPaid()) {
+                    if (year.getYear() == targetYear && month == targetMonth) {
+                        return false;
+                    }
+                    continue;
+                }
+
+                if (remainingExemptions <= 0) {
+                    return false;
+                }
+
+                if (year.getYear() == targetYear && month == targetMonth) {
+                    return true;
+                }
+
+                remainingExemptions--;
+            }
+        }
+
+        return false;
     }
 }

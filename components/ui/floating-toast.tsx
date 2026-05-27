@@ -49,12 +49,12 @@ export function FloatingToast({
   const Icon = config.Icon;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-5 z-[100] flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 top-5 z-[100] flex justify-center px-4 sm:px-6">
       <div
-        className={`pointer-events-auto flex w-full max-w-xl items-center gap-3 rounded-2xl border bg-white px-4 py-4 shadow-[0_20px_50px_rgba(15,23,42,0.15)] ${config.panelClassName}`}
+        className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border bg-white/95 px-4 py-3 shadow-[0_20px_50px_rgba(15,23,42,0.18)] backdrop-blur ${config.panelClassName}`}
       >
-        <Icon className={`h-6 w-6 shrink-0 ${config.iconClassName}`} />
-        <p className="text-sm font-semibold text-slate-800 sm:text-base">{message}</p>
+        <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${config.iconClassName}`} />
+        <p className="text-sm font-semibold leading-6 text-slate-800">{message}</p>
       </div>
     </div>
   );

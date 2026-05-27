@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { UserPlus } from 'lucide-react';
 import DaumPostcodeEmbed from 'react-daum-postcode';
 import { signupAction } from '@/app/actions';
+import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
 function formatPhoneNumber(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 11);
@@ -31,6 +32,7 @@ export function SignupCard() {
 
   const [detailAddress, setDetailAddress] = useState('');
   const [message, setMessage] = useState('');
+  const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [pending, setPending] = useState(false);
   const [openPostcode, setOpenPostcode] = useState(false);
 
@@ -40,13 +42,13 @@ export function SignupCard() {
 
     const result = await signupAction({
       ...form,
-      address: detailAddress
-        ? `${form.address}, ${detailAddress}`
-        : form.address,
+      address: form.address,
+      addressDetail: detailAddress,
     });
 
     setPending(false);
 
+    setToastTone(result.ok ? 'success' : 'error');
     setMessage(result.message ?? '가입 신청에 실패했습니다.');
 
     if (result.ok) {
@@ -64,40 +66,42 @@ export function SignupCard() {
   };
 
   return (
-    <div className="mx-auto max-w-xl rounded-[32px] bg-white/90 p-6 shadow-soft backdrop-blur">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">
-            Join
-          </p>
+    <>
+      <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
+      <div className="mx-auto max-w-xl rounded-[32px] bg-white/90 p-6 shadow-soft backdrop-blur">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">
+              Join
+            </p>
 
-          <h2 className="mt-2 text-3xl font-black text-slate-900">
-            동호회 가입 신청
-          </h2>
+            <h2 className="mt-2 text-3xl font-black text-slate-900">
+              동호회 가입 신청
+            </h2>
 
-          <p className="mt-2 text-sm text-slate-500">
-            가입 후 관리자가 승인하면 통합 대시보드에서 회비 현황을 확인할 수 있습니다.
-          </p>
+            <p className="mt-2 text-sm text-slate-500">
+              가입 후 관리자가 승인하면 통합 대시보드에서 회비 현황을 확인할 수 있습니다.
+            </p>
+          </div>
+
+          <span className="rounded-full bg-brand-100 p-3 text-brand-700">
+            <UserPlus className="h-5 w-5" />
+          </span>
         </div>
 
-        <span className="rounded-full bg-brand-100 p-3 text-brand-700">
-          <UserPlus className="h-5 w-5" />
-        </span>
-      </div>
-
-      <div className="mt-6 space-y-3">
-        <input
-          value={form.fullName}
-          onChange={(event) =>
-            setForm((current) => ({
-              ...current,
-              fullName: event.target.value,
-            }))
-          }
-          type="text"
-          placeholder="이름"
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
-        />
+        <div className="mt-6 space-y-3">
+          <input
+            value={form.fullName}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                fullName: event.target.value,
+              }))
+            }
+            type="text"
+            placeholder="이름"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+          />
 
         <input
           value={form.username}
@@ -198,18 +202,15 @@ export function SignupCard() {
           className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
         />
 
-        <button
-          onClick={handleSignup}
-          disabled={pending}
-          className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {pending ? '신청 중...' : '가입 신청'}
-        </button>
-
-        {message ? (
-          <p className="text-sm text-slate-600">{message}</p>
-        ) : null}
+          <button
+            onClick={handleSignup}
+            disabled={pending}
+            className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? '신청 중...' : '가입 신청'}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

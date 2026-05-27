@@ -7,6 +7,7 @@ import java.time.LocalDate;
 public record UpdateProfileRequest(
     @NotBlank String username,
     @NotBlank String address,
+    String addressDetail,
     @NotNull LocalDate birthDate
 ) {
 }

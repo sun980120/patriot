@@ -15,6 +15,7 @@ public record CreateChargeGroupRequest(
     @NotNull AdditionalChargeCategory category,
     LocalDate eventDate,
     @Min(0) Integer supportAmount,
+    @NotNull @Min(1) Integer actualCost,
     String memo,
     @NotEmpty List<UUID> participantMemberIds,
     @Min(1) Integer amountPerParticipant

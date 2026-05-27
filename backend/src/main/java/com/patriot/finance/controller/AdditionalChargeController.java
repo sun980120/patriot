@@ -4,7 +4,6 @@ import com.patriot.finance.dto.ChargeGroupResponse;
 import com.patriot.finance.dto.CreateChargeGroupRequest;
 import com.patriot.finance.dto.MemberChargeResponse;
 import com.patriot.finance.dto.MemberChargeToggleRequest;
-import com.patriot.finance.dto.SettleChargeGroupRequest;
 import com.patriot.finance.service.AdditionalChargeService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -46,8 +45,8 @@ public class AdditionalChargeController {
     }
 
     @PatchMapping("/{chargeGroupId}/settle")
-    public ChargeGroupResponse settleSurplus(@PathVariable UUID chargeGroupId, @Valid @RequestBody SettleChargeGroupRequest request) {
-        return additionalChargeService.settleSurplus(chargeGroupId, request.actualCost());
+    public ChargeGroupResponse settleSurplus(@PathVariable UUID chargeGroupId) {
+        return additionalChargeService.settleSurplus(chargeGroupId);
     }
 
     @PatchMapping("/{chargeGroupId}/reopen")

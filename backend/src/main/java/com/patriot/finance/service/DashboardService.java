@@ -19,6 +19,7 @@ import com.patriot.finance.repository.FiscalYearRepository;
 import com.patriot.finance.repository.IncomeEntryRepository;
 import com.patriot.finance.repository.MemberChargeRepository;
 import com.patriot.finance.repository.MemberRepository;
+import java.util.Comparator;
 import com.patriot.finance.repository.MembershipPaymentRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +54,7 @@ public class DashboardService {
 
         List<MemberSummaryResponse> profiles = (admin ? memberRepository.findAll().stream() : List.of(currentMember).stream())
             .filter(this::isVisibleMember)
+            .sorted(Comparator.comparing(Member::getJoinedAt, Comparator.nullsLast(Comparator.naturalOrder())))
             .map(this::toResponse)
             .toList();
 
@@ -97,12 +99,16 @@ public class DashboardService {
             member.getUsername(),
             member.getPhoneNumber(),
             member.getAddress(),
+            member.getAddressDetail(),
             member.getBirthDate(),
             member.getAppRole(),
             member.getMemberGrade(),
             member.getGradeSource(),
             member.getApprovalStatus(),
-            member.isActive()
+            member.isActive(),
+            member.getFeeExemptionMonths(),
+            member.getFeeExemptionStartDate(),
+            member.getJoinedAt()
         );
     }
 

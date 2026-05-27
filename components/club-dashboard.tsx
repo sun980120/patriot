@@ -1,22 +1,82 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { approveMemberAction, createFiscalYearAction, togglePaymentAction } from '@/app/actions';
+import { approveMemberAction, createFiscalYearAction, deletePendingMemberAction, togglePaymentAction } from '@/app/actions';
 import { HIDDEN_PROFILE_EMAILS, ROLE_META, CLUB_BANK } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
 import type { DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
+import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
 function isAdmin(profile: Profile | null) {
   return profile?.app_role === 'admin' || profile?.app_role === 'super_admin';
 }
 
+const GRADE_ORDER: Record<Profile['member_grade'], number> = {
+  간사: 0,
+  정회원: 1,
+  준회원: 2,
+};
+
 function paymentAmount(payment?: PaymentRecord) {
   return payment?.paid ? payment.charged_amount : 0;
 }
 
-function buildPaymentButtonClass(staff: boolean, paid: boolean, clickable: boolean) {
+function isFeeExempt(member: Profile, fiscalYears: FiscalYear[], payments: PaymentRecord[], year: number, month: number) {
+  if (
+    member.member_grade === '간사' ||
+    !member.fee_exemption_months ||
+    member.fee_exemption_months <= 0 ||
+    !member.fee_exemption_start_date
+  ) {
+    return false;
+  }
+
+  const startDate = new Date(`${member.fee_exemption_start_date}T00:00:00`);
+  const orderedYears = [...fiscalYears].sort((a, b) => a.year - b.year);
+  let remaining = member.fee_exemption_months;
+
+  for (const fiscalYear of orderedYears) {
+    for (const visibleMonth of fiscalYear.visible_months) {
+      const currentMonthDate = new Date(fiscalYear.year, visibleMonth - 1, 1);
+      if (currentMonthDate < new Date(startDate.getFullYear(), startDate.getMonth(), 1)) {
+        continue;
+      }
+
+      const payment = payments.find(
+        (item) =>
+          item.fiscal_year_id === fiscalYear.id &&
+          item.member_id === member.id &&
+          item.month === visibleMonth
+      );
+
+      if (payment?.paid) {
+        if (fiscalYear.year === year && visibleMonth === month) {
+          return false;
+        }
+        continue;
+      }
+
+      if (remaining <= 0) {
+        return false;
+      }
+
+      if (fiscalYear.year === year && visibleMonth === month) {
+        return true;
+      }
+
+      remaining -= 1;
+    }
+  }
+
+  return false;
+}
+
+function buildPaymentButtonClass(staff: boolean, exempt: boolean, paid: boolean, clickable: boolean) {
   if (staff) {
+    return 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400';
+  }
+  if (exempt) {
     return 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400';
   }
   if (paid) {
@@ -28,6 +88,17 @@ function buildPaymentButtonClass(staff: boolean, paid: boolean, clickable: boole
   return 'border-slate-200 bg-slate-50 text-slate-500';
 }
 
+function compareMembers(a: Profile, b: Profile) {
+  const gradeDiff = GRADE_ORDER[a.member_grade] - GRADE_ORDER[b.member_grade];
+  if (gradeDiff !== 0) return gradeDiff;
+
+  const aBirth = a.birth_date ? new Date(a.birth_date).getTime() : Number.MAX_SAFE_INTEGER;
+  const bBirth = b.birth_date ? new Date(b.birth_date).getTime() : Number.MAX_SAFE_INTEGER;
+  if (aBirth !== bBirth) return aBirth - bBirth;
+
+  return a.full_name.localeCompare(b.full_name, 'ko');
+}
+
 export function ClubDashboard({ initialData, source }: { initialData: DashboardBundle; source: 'mock' | 'spring' }) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
@@ -36,6 +107,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [memberSearch, setMemberSearch] = useState('');
   const [financeTab, setFinanceTab] = useState<'income' | 'expense'>('income');
   const [actionMessage, setActionMessage] = useState('');
+  const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [copyMessage, setCopyMessage] = useState('');
@@ -44,6 +116,14 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [appMessage, setAppMessage] = useState('');
   
   const [paymentGuide, setPaymentGuide] = useState<string | null>(null);
+
+  useEffect(() => {
+    setData(initialData);
+    setSelectedYearId((current) => {
+      if (initialData.fiscalYears.some((year) => year.id === current)) return current;
+      return initialData.selectedYear?.id ?? initialData.fiscalYears[0]?.id ?? '';
+    });
+  }, [initialData]);
 
   const profile = data.profile;
   const adminMode = isAdmin(profile);
@@ -76,8 +156,11 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
   const filteredProfiles = useMemo(() => {
     const keyword = memberSearch.trim().toLowerCase();
-    if (!keyword) return visibleProfiles;
-    return visibleProfiles.filter((item) => item.full_name.toLowerCase().includes(keyword));
+    const searched = !keyword
+      ? visibleProfiles
+      : visibleProfiles.filter((item) => item.full_name.toLowerCase().includes(keyword));
+
+    return [...searched].sort(compareMembers);
   }, [memberSearch, visibleProfiles]);
 
   const pendingProfiles = useMemo(
@@ -108,21 +191,34 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
           .reduce((sum, item) => sum + paymentAmount(item), 0)
       : 0;
 
-    const otherIncome = yearIncomes.reduce((sum, item) => sum + item.amount, 0);
+    const yearAdditionalChargeIncome = selectedYear
+      ? data.chargeGroups
+          .filter((group) => group.fiscal_year_id === selectedYear.id)
+          .reduce((sum, group) => sum + group.participant_paid_total, 0)
+      : 0;
+
+    const otherIncome = yearIncomes
+      .filter((item) => !item.charge_group_id)
+      .reduce((sum, item) => sum + item.amount, 0);
     const totalExpense = yearExpenses.reduce((sum, item) => sum + item.amount, 0);
-    const cumulativeOtherIncome = data.incomes.reduce((sum, item) => sum + item.amount, 0);
+    const cumulativeOtherIncome = data.incomes
+      .filter((item) => !item.charge_group_id)
+      .reduce((sum, item) => sum + item.amount, 0);
     const cumulativeExpense = data.expenses.reduce((sum, item) => sum + item.amount, 0);
     const cumulativeMembershipIncome = data.payments.reduce((sum, item) => sum + paymentAmount(item), 0);
+    const cumulativeAdditionalChargeIncome = data.chargeGroups.reduce((sum, group) => sum + group.participant_paid_total, 0);
 
     return {
       membershipIncome: yearMembershipIncome,
+      additionalChargeIncome: yearAdditionalChargeIncome,
       otherIncome,
-      totalIncome: yearMembershipIncome + otherIncome,
+      totalIncome: yearMembershipIncome + yearAdditionalChargeIncome + otherIncome,
       totalExpense,
-      balance: yearMembershipIncome + otherIncome - totalExpense,
-      cumulativeBalance: cumulativeMembershipIncome + cumulativeOtherIncome - cumulativeExpense,
+      balance: yearMembershipIncome + yearAdditionalChargeIncome + otherIncome - totalExpense,
+      cumulativeBalance:
+        cumulativeMembershipIncome + cumulativeAdditionalChargeIncome + cumulativeOtherIncome - cumulativeExpense,
     };
-  }, [data.expenses, data.incomes, data.payments, selectedYear, yearExpenses, yearIncomes]);
+  }, [data.chargeGroups, data.expenses, data.incomes, data.payments, selectedYear, yearExpenses, yearIncomes]);
 
   const rows = useMemo(
     () =>
@@ -141,6 +237,11 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
   const handleTogglePaid = (member: Profile, month: number) => {
     if (!adminMode || member.member_grade === '간사' || !selectedYear) return;
+    if (isFeeExempt(member, fiscalYears, data.payments, selectedYear.year, month)) {
+      setToastTone('error');
+      setActionMessage('회비 면제 기간에는 납부 처리할 수 없습니다.');
+      return;
+    }
     setActionMessage('');
 
     let nextPaid = false;
@@ -185,6 +286,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
         });
 
         if (!result.ok) {
+          setToastTone('error');
           setActionMessage(result.message ?? '납부 상태 변경에 실패했습니다.');
           router.refresh();
         }
@@ -204,15 +306,19 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
       const approved = nextProfiles.find((item) => item.id === memberId);
       const missingPayments = approved
         ? current.fiscalYears.flatMap((year) =>
-            year.visible_months.map((month) => ({
-              id: `payment-${year.id}-${approved.id}-${month}`,
-              fiscal_year_id: year.id,
-              member_id: approved.id,
-              month,
-              paid: false,
-              charged_amount: 0,
-              applied_grade: approved.member_grade,
-            }))
+            year.visible_months.flatMap((month) =>
+              isFeeExempt(approved, current.fiscalYears, current.payments, year.year, month)
+                ? []
+                : [{
+                    id: `payment-${year.id}-${approved.id}-${month}`,
+                    fiscal_year_id: year.id,
+                    member_id: approved.id,
+                    month,
+                    paid: false,
+                    charged_amount: 0,
+                    applied_grade: approved.member_grade,
+                  }]
+            )
           )
         : [];
 
@@ -230,11 +336,34 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
       startTransition(async () => {
         const result = await approveMemberAction(memberId);
         if (!result.ok) {
+          setToastTone('error');
           setActionMessage(result.message ?? '회원 승인에 실패했습니다.');
           router.refresh();
           return;
         }
         router.refresh();
+      });
+    }
+  };
+
+  const handleDeletePending = (memberId: string) => {
+    if (!adminMode) return;
+    setActionMessage('');
+
+    setData((current) => ({
+      ...current,
+      profiles: current.profiles.filter((item) => item.id !== memberId),
+    }));
+
+    if (source === 'spring') {
+      startTransition(async () => {
+        const result = await deletePendingMemberAction(memberId);
+        if (!result.ok) {
+          setToastTone('error');
+          setActionMessage(result.message ?? '가입 신청 삭제에 실패했습니다.');
+          router.refresh();
+          return;
+        }
       });
     }
   };
@@ -261,15 +390,19 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
     };
 
     const newPayments = activeApprovedProfiles.flatMap((member) =>
-      visibleMonths.map((month) => ({
-        id: `payment-year-${nextYearValue}-${member.id}-${month}`,
-        fiscal_year_id: fiscalYear.id,
-        member_id: member.id,
-        month,
-        paid: false,
-        charged_amount: 0,
-        applied_grade: member.member_grade,
-      }))
+      visibleMonths.flatMap((month) =>
+        isFeeExempt(member, [...fiscalYears, fiscalYear], data.payments, nextYearValue, month)
+          ? []
+          : [{
+              id: `payment-year-${nextYearValue}-${member.id}-${month}`,
+              fiscal_year_id: fiscalYear.id,
+              member_id: member.id,
+              month,
+              paid: false,
+              charged_amount: 0,
+              applied_grade: member.member_grade,
+            }]
+      )
     );
 
     setData((current) => ({
@@ -287,6 +420,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
           router.refresh();
           return;
         }
+        setToastTone('error');
         setActionMessage(result.message ?? '연도 개설에 실패했습니다.');
         router.refresh();
       });
@@ -301,102 +435,104 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
   if (!hasFiscalYear) {
     return (
-      <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Setup Required</p>
-        <h2 className="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">연도 데이터가 아직 없습니다.</h2>
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          `fiscal_years` 테이블에 최소 1개 연도를 생성해야 대시보드를 표시할 수 있습니다.
-          {adminMode ? ' 관리자라면 새 연도를 먼저 개설해 주세요.' : ' 관리자에게 연도 개설을 요청해 주세요.'}
-        </p>
-        {adminMode ? (
-          <div className="mt-6 space-y-3 sm:flex sm:flex-wrap sm:items-end sm:gap-3 sm:space-y-0">
-            <button
-              type="button"
-              onClick={() => {
-                setActionMessage('');
-                const initialYear = 2026;
-                if (!fiscalYears.some((item) => item.year === initialYear)) {
-                  const visibleMonths = [5, 6, 7, 8, 9, 10, 11, 12];
-                  const fiscalYear: FiscalYear = {
-                    id: `year-${initialYear}`,
-                    year: initialYear,
-                    visible_months: visibleMonths,
-                    is_active: true,
-                  };
-
-                  const newPayments = activeApprovedProfiles.flatMap((member) =>
-                    visibleMonths.map((month) => ({
-                      id: `payment-year-${initialYear}-${member.id}-${month}`,
-                      fiscal_year_id: fiscalYear.id,
-                      member_id: member.id,
-                      month,
-                      paid: false,
-                      charged_amount: 0,
-                      applied_grade: member.member_grade,
-                    }))
-                  );
-
-                  setData((current) => ({
-                    ...current,
-                    fiscalYears: [fiscalYear],
-                    selectedYear: fiscalYear,
-                    payments: [...current.payments, ...newPayments],
-                  }));
-                  setSelectedYearId(fiscalYear.id);
-                }
-
-                if (source === 'spring') {
-                  startTransition(async () => {
-                    const result = await createFiscalYearAction(initialYear);
-                    if (result.ok) {
-                      router.refresh();
-                      return;
-                    }
-                    setActionMessage(result.message ?? '초기 연도 생성에 실패했습니다.');
-                    router.refresh();
-                  });
-                }
-              }}
-              className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 sm:w-auto"
-            >
-              2026년 초기 연도 생성
-            </button>
-            <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-end">
-              <input
-                value={newYearInput}
-                onChange={(event) => setNewYearInput(event.target.value)}
-                type="number"
-                min={2026}
-                step={1}
-                placeholder="예: 2028"
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none sm:w-40"
-              />
+      <>
+        <FloatingToast open={Boolean(actionMessage)} message={actionMessage} tone={toastTone} onClose={() => setActionMessage('')} />
+        <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Setup Required</p>
+          <h2 className="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">연도 데이터가 아직 없습니다.</h2>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            `fiscal_years` 테이블에 최소 1개 연도를 생성해야 대시보드를 표시할 수 있습니다.
+            {adminMode ? ' 관리자라면 새 연도를 먼저 개설해 주세요.' : ' 관리자에게 연도 개설을 요청해 주세요.'}
+          </p>
+          {adminMode ? (
+            <div className="mt-6 space-y-3 sm:flex sm:flex-wrap sm:items-end sm:gap-3 sm:space-y-0">
               <button
                 type="button"
-                onClick={addYear}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:border-brand-300 hover:text-brand-800 sm:w-auto"
+                onClick={() => {
+                  setActionMessage('');
+                  const initialYear = 2026;
+                  if (!fiscalYears.some((item) => item.year === initialYear)) {
+                    const visibleMonths = [5, 6, 7, 8, 9, 10, 11, 12];
+                    const fiscalYear: FiscalYear = {
+                      id: `year-${initialYear}`,
+                      year: initialYear,
+                      visible_months: visibleMonths,
+                      is_active: true,
+                    };
+
+                    const newPayments = activeApprovedProfiles.flatMap((member) =>
+                      visibleMonths.flatMap((month) =>
+                        isFeeExempt(member, [fiscalYear], data.payments, initialYear, month)
+                          ? []
+                          : [{
+                              id: `payment-year-${initialYear}-${member.id}-${month}`,
+                              fiscal_year_id: fiscalYear.id,
+                              member_id: member.id,
+                              month,
+                              paid: false,
+                              charged_amount: 0,
+                              applied_grade: member.member_grade,
+                            }]
+                      )
+                    );
+
+                    setData((current) => ({
+                      ...current,
+                      fiscalYears: [fiscalYear],
+                      selectedYear: fiscalYear,
+                      payments: [...current.payments, ...newPayments],
+                    }));
+                    setSelectedYearId(fiscalYear.id);
+                  }
+
+                  if (source === 'spring') {
+                    startTransition(async () => {
+                      const result = await createFiscalYearAction(initialYear);
+                      if (result.ok) {
+                        router.refresh();
+                        return;
+                      }
+                      setToastTone('error');
+                      setActionMessage(result.message ?? '초기 연도 생성에 실패했습니다.');
+                      router.refresh();
+                    });
+                  }
+                }}
+                className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 sm:w-auto"
               >
-                다른 연도 직접 개설
+                2026년 초기 연도 생성
               </button>
+              <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-end">
+                <input
+                  value={newYearInput}
+                  onChange={(event) => setNewYearInput(event.target.value)}
+                  type="number"
+                  min={2026}
+                  step={1}
+                  placeholder="예: 2028"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none sm:w-40"
+                />
+                <button
+                  type="button"
+                  onClick={addYear}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:border-brand-300 hover:text-brand-800 sm:w-auto"
+                >
+                  다른 연도 직접 개설
+                </button>
+              </div>
             </div>
-          </div>
-        ) : null}
-        {actionMessage ? <p className="mt-4 text-sm text-rose-600">{actionMessage}</p> : null}
-      </section>
+          ) : null}
+        </section>
+      </>
     );
   }
 
   return (
     <>
+      <FloatingToast open={Boolean(actionMessage)} message={actionMessage} tone={toastTone} onClose={() => setActionMessage('')} />
       <div className="min-w-0 space-y-6 sm:space-y-8">
-        {actionMessage && (
-          <section className="glass-panel rounded-[24px] border border-white/70 px-4 py-3 shadow-soft sm:px-5">
-            <p className="text-sm text-rose-600">{actionMessage}</p>
-          </section>
-        )}
-
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <MetricCard label={`${selectedYear.year}년 총 세입`} value={formatCurrency(summary.totalIncome)} description="회비 + 기타 세입" />
+          <MetricCard label={`${selectedYear.year}년 총 세입`} value={formatCurrency(summary.totalIncome)} description="회비 + 추가 비용 + 기타 세입" />
           <MetricCard label={`${selectedYear.year}년 총 지출`} value={formatCurrency(summary.totalExpense)} description="해당 연도 지출 합계" />
           <MetricCard label="누적 남은 잔액" value={formatCurrency(summary.cumulativeBalance)} description="전체 누적 세입 - 전체 누적 지출" accent />
         </section>
@@ -532,7 +668,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                         <div className="mt-4 grid grid-cols-2 gap-3">
                           {row.cells.map((cell) => {
                             const staff = row.member.member_grade === '간사';
-                            const cellActive = adminMode && !staff;
+                            const exempt = selectedYear ? isFeeExempt(row.member, fiscalYears, data.payments, selectedYear.year, cell.month) : false;
+                            const cellActive = adminMode && !staff && !exempt;
                             const paid = Boolean(cell.payment?.paid);
 
                             return (
@@ -541,31 +678,34 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                                 type="button"
                                 disabled={!cellActive}
                                 onClick={() => handleTogglePaid(row.member, cell.month)}
-                                className={`rounded-2xl border px-3 py-4 text-left transition ${buildPaymentButtonClass(
+                                className={`flex min-h-[136px] flex-col justify-between rounded-2xl border px-4 py-4 text-left transition ${buildPaymentButtonClass(
                                   staff,
+                                  exempt,
                                   paid,
                                   cellActive
                                 )}`}
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-sm font-black">
+                                  <span className="text-2xl font-black tracking-tight">
                                     {cell.month}월
                                   </span>
 
-                                  <span className="text-xs font-bold">
-                                    {staff ? '간사' : paid ? '납부 완료' : '미납'}
+                                  <span className="text-sm font-bold">
+                                    {staff ? '면제' : exempt ? '면제' : paid ? '납부 완료' : '미납'}
                                   </span>
                                 </div>
 
-                                <p className="mt-3 text-xs font-semibold">
-                                  {staff
-                                    ? '면제'
-                                    : paid
-                                      ? '완료'
-                                      : cellActive
-                                        ? '탭해서 등록'
-                                        : '납부 전'}
-                                </p>
+                                <div className="mt-4">
+                                  {staff ? (
+                                    <p className="text-xs font-semibold text-slate-400">간사 회비 면제</p>
+                                  ) : exempt ? (
+                                    <p className="text-xs font-semibold text-slate-400">면제 적용 기간</p>
+                                  ) : paid ? (
+                                    <p className="text-xs font-semibold text-emerald-700">납부가 완료되었습니다</p>
+                                  ) : (
+                                    <p className="text-xs font-semibold">탭해서 등록</p>
+                                  )}
+                                </div>
                               </button>
                             );
                           })}
@@ -615,41 +755,48 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                       <div className="mt-4 grid grid-cols-2 gap-3">
                         {row.cells.map((cell) => {
                           const staff = row.member.member_grade === '간사';
+                          const exempt = selectedYear ? isFeeExempt(row.member, fiscalYears, data.payments, selectedYear.year, cell.month) : false;
                           const paid = Boolean(cell.payment?.paid);
 
                           return (
                             <div
                               key={`${row.member.id}-${cell.month}`}
-                              className={`rounded-2xl border px-3 py-4 text-left transition ${buildPaymentButtonClass(
+                              className={`flex min-h-[136px] flex-col justify-between rounded-2xl border px-4 py-4 text-left transition ${buildPaymentButtonClass(
                                 staff,
+                                exempt,
                                 paid,
                                 false
                               )}`}
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-sm font-black">
+                                <span className="text-2xl font-black tracking-tight">
                                   {cell.month}월
                                 </span>
 
-                                <span className="text-xs font-bold">
-                                  {staff ? '간사' : paid ? '납부 완료' : '미납'}
+                                <span className="text-sm font-bold">
+                                  {staff ? '면제' : exempt ? '면제' : paid ? '납부 완료' : '미납'}
                                 </span>
                               </div>
 
-                              <p className="mt-3 text-xs font-semibold">
-                                {staff ? '면제' : paid ? '완료' : '납부 전'}
-                              </p>
-                              {!staff && !paid ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setPaymentGuide(row.member.full_name)
-                                  }
-                                  className="mt-3 w-full rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white"
-                                >
-                                  납부하기
-                                </button>
-                              ) : null}
+                              <div className="mt-4">
+                                {staff ? (
+                                  <p className="text-xs font-semibold text-slate-400">간사 회비 면제</p>
+                                ) : exempt ? (
+                                  <p className="text-xs font-semibold text-slate-400">면제 적용 기간</p>
+                                ) : paid ? (
+                                  <p className="text-xs font-semibold text-emerald-700">납부가 완료되었습니다</p>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPaymentGuide(row.member.full_name)
+                                    }
+                                    className="w-full rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white"
+                                  >
+                                    납부하기
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -689,7 +836,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                           </td>
                           {row.cells.map((cell) => {
                             const staff = row.member.member_grade === '간사';
-                            const cellActive = adminMode && !staff;
+                            const exempt = isFeeExempt(row.member, fiscalYears, data.payments, selectedYear.year, cell.month);
+                            const cellActive = adminMode && !staff && !exempt;
                             const paid = Boolean(cell.payment?.paid);
                             const amount = cell.payment?.charged_amount ?? 0;
                             const appliedGrade = cell.payment?.applied_grade ?? row.member.member_grade;
@@ -699,11 +847,21 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                                   type="button"
                                   disabled={!cellActive}
                                   onClick={() => handleTogglePaid(row.member, cell.month)}
-                                  className={`w-full rounded-2xl border px-3 py-3 text-center transition ${buildPaymentButtonClass(staff, paid, cellActive)}`}
+                                  className={`flex h-24 w-full flex-col items-center justify-center rounded-2xl border px-3 py-3 text-center transition ${buildPaymentButtonClass(staff, exempt, paid, cellActive)}`}
                                 >
-                                  <span className="block text-xs font-bold">{staff ? '간사' : paid ? '납부 완료' : '미납'}</span>
+                                  <span className="block text-xs font-bold">
+                                    {staff ? '면제' : exempt ? '면제' : paid ? '납부 완료' : '미납'}
+                                  </span>
                                   <span className="mt-1 block text-[11px] font-semibold whitespace-nowrap">
-                                    {staff ? '면제' : paid ? '완료' : cellActive ? '클릭하여 등록' : '납부 전'}
+                                    {staff
+                                      ? '간사 회비 면제'
+                                      : exempt
+                                        ? '면제 적용 기간'
+                                        : paid
+                                          ? '납부가 완료됨'
+                                          : cellActive
+                                            ? '클릭하여 등록'
+                                            : '납부 전'}
                                   </span>
                                 </button>
                               </td>
@@ -739,13 +897,35 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                       <div>
                         <p className="font-black text-slate-900">{member.full_name}</p>
                         <p className="mt-1 text-xs text-slate-500">가입 요청 · {member.member_grade}</p>
+                        {member.phone_number ? (
+                          <p className="mt-3 text-sm text-slate-600">
+                            <span className="font-semibold text-slate-700">전화번호:</span> {member.phone_number}
+                          </p>
+                        ) : null}
+                        {member.birth_date ? (
+                          <p className="mt-1 text-sm text-slate-600">
+                            <span className="font-semibold text-slate-700">생년월일:</span> {member.birth_date}
+                          </p>
+                        ) : null}
                       </div>
-                      <button onClick={() => handleApprove(member.id)} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800">
-                        승인
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        <button onClick={() => handleApprove(member.id)} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800">
+                          승인
+                        </button>
+                        <button
+                          onClick={() => handleDeletePending(member.id)}
+                          className="rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-bold text-rose-600 transition hover:bg-rose-50"
+                        >
+                          삭제
+                        </button>
+                      </div>
                     </div>
                   </div>
-                )) : <EmptyState text="현재 승인 대기 회원이 없습니다." />}
+                )) : (
+                  <div className="sm:col-span-2 xl:col-span-3">
+                    <EmptyState text="현재 승인 대기 회원이 없습니다." />
+                  </div>
+                )}
               </div>
             </section>
           ) : null}
@@ -780,7 +960,13 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
             </div>
             <div className="mt-4">
               {financeTab === 'income' ? (
-                <TransactionPanel title="기타 세입" total={summary.otherIncome} items={yearIncomes} kind="income" embedded />
+                <TransactionPanel
+                  title="기타 세입"
+                  total={yearIncomes.reduce((sum, item) => sum + item.amount, 0)}
+                  items={yearIncomes}
+                  kind="income"
+                  embedded
+                />
               ) : (
                 <TransactionPanel title="지출 내역" total={summary.totalExpense} items={yearExpenses} kind="expense" embedded />
               )}

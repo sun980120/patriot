@@ -33,7 +33,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberService {
 
     public static final String DEFAULT_RESET_PASSWORD = "0000";
-
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
@@ -52,12 +51,14 @@ public class MemberService {
             .fullName(request.fullName())
             .phoneNumber(request.phoneNumber())
             .address(request.address())
+            .addressDetail(request.addressDetail())
             .birthDate(request.birthDate())
             .appRole(AppRole.MEMBER)
             .memberGrade(deriveGrade(request.birthDate()))
             .gradeSource(GradeSource.AUTO)
             .approvalStatus(ApprovalStatus.PENDING)
             .active(false)
+            .feeExemptionMonths(0)
             .build();
 
         return toResponse(memberRepository.save(member));
@@ -119,6 +120,7 @@ public class MemberService {
         member.updateProfile(
             normalizedUsername,
             request.address().trim(),
+            request.addressDetail() == null ? null : request.addressDetail().trim(),
             request.birthDate(),
             deriveGrade(request.birthDate())
         );
@@ -153,10 +155,13 @@ public class MemberService {
     }
 
     @Transactional
-    public MemberSummaryResponse reject(UUID memberId) {
+    public MessageResponse deletePendingMember(UUID memberId) {
         Member member = getMember(memberId);
-        member.reject();
-        return toResponse(member);
+        if (member.getApprovalStatus() != ApprovalStatus.PENDING) {
+            throw new IllegalArgumentException("승인 대기 회원만 삭제할 수 있습니다.");
+        }
+        memberRepository.delete(member);
+        return new MessageResponse("가입 신청이 삭제되었습니다.");
     }
 
     @Transactional
@@ -170,6 +175,13 @@ public class MemberService {
     public MemberSummaryResponse activate(UUID memberId) {
         Member member = getMember(memberId);
         member.activate();
+        return toResponse(member);
+    }
+
+    @Transactional
+    public MemberSummaryResponse updateFeeExemption(UUID memberId, Integer months) {
+        Member member = getMember(memberId);
+        member.updateFeeExemption(months);
         return toResponse(member);
     }
 
@@ -217,12 +229,16 @@ public class MemberService {
             member.getUsername(),
             member.getPhoneNumber(),
             member.getAddress(),
+            member.getAddressDetail(),
             member.getBirthDate(),
             member.getAppRole(),
             member.getMemberGrade(),
             member.getGradeSource(),
             member.getApprovalStatus(),
-            member.isActive()
+            member.isActive(),
+            member.getFeeExemptionMonths(),
+            member.getFeeExemptionStartDate(),
+            member.getJoinedAt()
         );
     }
 }
