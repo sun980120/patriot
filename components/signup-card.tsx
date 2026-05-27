@@ -155,18 +155,7 @@ export function SignupCard() {
           />
 
           {openPostcode ? (
-            <div className="overflow-hidden rounded-2xl border border-slate-200">
-              <DaumPostcodeEmbed
-                onComplete={(data) => {
-                  setForm((current) => ({
-                    ...current,
-                    address: data.address,
-                  }));
-
-                  setOpenPostcode(false);
-                }}
-              />
-            </div>
+            <div className="hidden" />
           ) : null}
         </div>
 
@@ -211,6 +200,35 @@ export function SignupCard() {
           </button>
         </div>
       </div>
+      {openPostcode ? (
+        <div className="fixed inset-0 z-[80] bg-black/40 px-4 py-6">
+          <div className="mx-auto flex h-full max-w-xl flex-col overflow-hidden rounded-[28px] bg-white shadow-soft">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h3 className="text-base font-black text-slate-900">주소 검색</h3>
+              <button
+                type="button"
+                onClick={() => setOpenPostcode(false)}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 bg-white">
+              <DaumPostcodeEmbed
+                style={{ width: '100%', height: '100%' }}
+                onComplete={(data) => {
+                  setForm((current) => ({
+                    ...current,
+                    address: data.address,
+                  }));
+
+                  setOpenPostcode(false);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

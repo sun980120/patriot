@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { changePasswordAction, checkUsernameAvailabilityAction, updateProfileAction } from '@/app/actions';
 import type { Profile } from '@/lib/types';
 import DaumPostcodeEmbed from 'react-daum-postcode';
+import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
 export function AccountSettingsCard({ profile }: { profile: Profile }) {
   const [profileForm, setProfileForm] = useState({
@@ -22,6 +23,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
   const [usernameMessage, setUsernameMessage] = useState('');
   const [profileMessage, setProfileMessage] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
+  const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [pending, startTransition] = useTransition();
 
   const handleUsernameCheck = () => {
@@ -29,6 +31,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
 
     startTransition(async () => {
       const result = await checkUsernameAvailabilityAction(profileForm.username);
+      setToastTone(result.ok ? 'success' : 'error');
       setUsernameMessage(result.message ?? (result.ok ? '사용 가능한 아이디입니다.' : '아이디 확인에 실패했습니다.'));
     });
   };
@@ -47,6 +50,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
         address: profileForm.address,
         addressDetail: detailAddress,
       });
+      setToastTone(result.ok ? 'success' : 'error');
       setProfileMessage(result.message ?? (result.ok ? '사용자 정보가 변경되었습니다.' : '사용자 정보 변경에 실패했습니다.'));
     });
   };
@@ -70,6 +74,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
         newPassword: passwordForm.newPassword,
       });
 
+      setToastTone(result.ok ? 'success' : 'error');
       setPasswordMessage(result.message ?? (result.ok ? '비밀번호가 변경되었습니다.' : '비밀번호 변경에 실패했습니다.'));
 
       if (result.ok) {
@@ -83,7 +88,18 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
   };
 
   return (
-    <div className="space-y-6">
+    <>
+      <FloatingToast
+        open={Boolean(usernameMessage || profileMessage || passwordMessage)}
+        message={usernameMessage || profileMessage || passwordMessage}
+        tone={toastTone}
+        onClose={() => {
+          setUsernameMessage('');
+          setProfileMessage('');
+          setPasswordMessage('');
+        }}
+      />
+      <div className="space-y-6">
       <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
         <div className="border-b border-slate-200/80 pb-4">
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Account</p>
@@ -109,7 +125,6 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
               아이디 중복 확인
             </button>
           </div>
-          {usernameMessage ? <p className="text-sm text-slate-600">{usernameMessage}</p> : null}
           <div className="space-y-2">
           <button
             type="button"
@@ -135,18 +150,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
           />
 
           {openPostcode ? (
-            <div className="overflow-hidden rounded-2xl border border-slate-200">
-              <DaumPostcodeEmbed
-                onComplete={(data) => {
-                  setProfileForm((current) => ({
-                    ...current,
-                    address: data.address,
-                  }));
-
-                  setOpenPostcode(false);
-                }}
-              />
-            </div>
+            <div className="hidden" />
           ) : null}
         </div>
           <div className="space-y-1">
@@ -180,7 +184,6 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             {pending ? '저장 중...' : '사용자 정보 저장'}
           </button>
         </div>
-        {profileMessage ? <p className="mt-3 text-sm text-slate-600">{profileMessage}</p> : null}
       </section>
 
       <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
@@ -223,8 +226,37 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             {pending ? '변경 중...' : '비밀번호 변경'}
           </button>
         </div>
-        {passwordMessage ? <p className="mt-3 text-sm text-slate-600">{passwordMessage}</p> : null}
       </section>
     </div>
+      {openPostcode ? (
+        <div className="fixed inset-0 z-[80] bg-black/40 px-4 py-6">
+          <div className="mx-auto flex h-full max-w-2xl flex-col overflow-hidden rounded-[28px] bg-white shadow-soft">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h3 className="text-base font-black text-slate-900">주소 검색</h3>
+              <button
+                type="button"
+                onClick={() => setOpenPostcode(false)}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 bg-white">
+              <DaumPostcodeEmbed
+                style={{ width: '100%', height: '100%' }}
+                onComplete={(data) => {
+                  setProfileForm((current) => ({
+                    ...current,
+                    address: data.address,
+                  }));
+
+                  setOpenPostcode(false);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
