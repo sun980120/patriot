@@ -459,7 +459,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   };
 
   const buildTransferText = (amount: number) =>
-    `${CLUB_BANK.bankName} ${CLUB_BANK.accountNumber} ${formatCurrency(amount)}`;
+    `${CLUB_BANK.bankName} ${CLUB_BANK.accountNumber} ${amount.toLocaleString('ko-KR')}원`;
 
   const handleCopyTransferText = async (amount: number, label: string) => {
     await navigator.clipboard.writeText(buildTransferText(amount));
