@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { UserPlus } from 'lucide-react';
-import DaumPostcodeEmbed from 'react-daum-postcode';
+import { useDaumPostcodePopup } from 'react-daum-postcode';
 import { signupAction } from '@/app/actions';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
@@ -21,6 +21,7 @@ function formatPhoneNumber(value: string) {
 }
 
 export function SignupCard() {
+  const openPostcodePopup = useDaumPostcodePopup();
   const [form, setForm] = useState({
     fullName: '',
     username: '',
@@ -34,7 +35,6 @@ export function SignupCard() {
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [pending, setPending] = useState(false);
-  const [openPostcode, setOpenPostcode] = useState(false);
 
   const handleSignup = async () => {
     setPending(true);
@@ -64,6 +64,24 @@ export function SignupCard() {
       setDetailAddress('');
     }
   };
+
+  const handleAddressSearch = () => {
+    openPostcodePopup({
+      onComplete: (data) => {
+        setForm((current) => ({
+          ...current,
+          address: data.address,
+        }));
+      },
+      onError: () => {
+        setToastTone('error');
+        setMessage('주소 검색을 열지 못했습니다. 다시 시도해 주세요.');
+      },
+    });
+  };
+
+  const baseInputClass =
+    'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm focus:border-brand-400 focus:outline-none';
 
   return (
     <>
@@ -100,7 +118,7 @@ export function SignupCard() {
             }
             type="text"
             placeholder="이름"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            className={baseInputClass}
           />
 
         <input
@@ -113,7 +131,7 @@ export function SignupCard() {
           }
           type="text"
           placeholder="아이디"
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+          className={baseInputClass}
         />
 
         <input
@@ -127,14 +145,14 @@ export function SignupCard() {
           type="tel"
           inputMode="numeric"
           placeholder="전화번호"
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+          className={baseInputClass}
         />
 
         <div className="space-y-2">
           <button
             type="button"
-            onClick={() => setOpenPostcode(true)}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            onClick={handleAddressSearch}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-700 transition hover:bg-slate-50 sm:text-sm"
           >
             주소 검색
           </button>
@@ -143,7 +161,7 @@ export function SignupCard() {
             value={form.address}
             readOnly
             placeholder="주소 검색 버튼을 눌러주세요"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:outline-none"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base focus:outline-none sm:text-sm"
           />
 
           <input
@@ -151,12 +169,9 @@ export function SignupCard() {
             onChange={(event) => setDetailAddress(event.target.value)}
             type="text"
             placeholder="상세 주소"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            className={baseInputClass}
           />
 
-          {openPostcode ? (
-            <div className="hidden" />
-          ) : null}
         </div>
 
         <div className="space-y-1">
@@ -164,18 +179,25 @@ export function SignupCard() {
             생년월일
           </label>
 
-          <input
-            value={form.birthDate}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                birthDate: event.target.value,
-              }))
-            }
-            type="date"
-            max={new Date().toISOString().split('T')[0]}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
-          />
+          <div className="relative">
+            {!form.birthDate ? (
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base text-slate-400 sm:text-sm">
+                생년월일 선택
+              </span>
+            ) : null}
+            <input
+              value={form.birthDate}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  birthDate: event.target.value,
+                }))
+              }
+              type="date"
+              max={new Date().toISOString().split('T')[0]}
+              className={`${baseInputClass} min-h-[54px] appearance-none ${form.birthDate ? 'text-slate-900' : 'text-transparent'}`}
+            />
+          </div>
         </div>
 
         <input
@@ -188,47 +210,18 @@ export function SignupCard() {
           }
           type="password"
           placeholder="비밀번호"
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+          className={baseInputClass}
         />
 
           <button
             onClick={handleSignup}
             disabled={pending}
-            className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-base font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
           >
             {pending ? '신청 중...' : '가입 신청'}
           </button>
         </div>
       </div>
-      {openPostcode ? (
-        <div className="fixed inset-0 z-[80] bg-black/40 px-4 py-6">
-          <div className="mx-auto flex h-full max-w-xl flex-col overflow-hidden rounded-[28px] bg-white shadow-soft">
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <h3 className="text-base font-black text-slate-900">주소 검색</h3>
-              <button
-                type="button"
-                onClick={() => setOpenPostcode(false)}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
-              >
-                닫기
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 bg-white">
-              <DaumPostcodeEmbed
-                style={{ width: '100%', height: '100%' }}
-                onComplete={(data) => {
-                  setForm((current) => ({
-                    ...current,
-                    address: data.address,
-                  }));
-
-                  setOpenPostcode(false);
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }

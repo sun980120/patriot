@@ -3,10 +3,11 @@
 import { useState, useTransition } from 'react';
 import { changePasswordAction, checkUsernameAvailabilityAction, updateProfileAction } from '@/app/actions';
 import type { Profile } from '@/lib/types';
-import DaumPostcodeEmbed from 'react-daum-postcode';
+import { useDaumPostcodePopup } from 'react-daum-postcode';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
 export function AccountSettingsCard({ profile }: { profile: Profile }) {
+  const openPostcodePopup = useDaumPostcodePopup();
   const [profileForm, setProfileForm] = useState({
     username: profile.username ?? '',
     address: profile.base_address ?? profile.address ?? '',
@@ -14,7 +15,6 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
   });
 
   const [detailAddress, setDetailAddress] = useState(profile.detail_address ?? '');
-  const [openPostcode, setOpenPostcode] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -87,6 +87,21 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
     });
   };
 
+  const handleAddressSearch = () => {
+    openPostcodePopup({
+      onComplete: (data) => {
+        setProfileForm((current) => ({
+          ...current,
+          address: data.address,
+        }));
+      },
+      onError: () => {
+        setToastTone('error');
+        setProfileMessage('주소 검색을 열지 못했습니다. 다시 시도해 주세요.');
+      },
+    });
+  };
+
   return (
     <>
       <FloatingToast
@@ -128,7 +143,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
           <div className="space-y-2">
           <button
             type="button"
-            onClick={() => setOpenPostcode(true)}
+            onClick={handleAddressSearch}
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
             주소 검색
@@ -149,9 +164,6 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
           />
 
-          {openPostcode ? (
-            <div className="hidden" />
-          ) : null}
         </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-500">
@@ -228,35 +240,6 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
         </div>
       </section>
     </div>
-      {openPostcode ? (
-        <div className="fixed inset-0 z-[80] bg-black/40 px-4 py-6">
-          <div className="mx-auto flex h-full max-w-2xl flex-col overflow-hidden rounded-[28px] bg-white shadow-soft">
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <h3 className="text-base font-black text-slate-900">주소 검색</h3>
-              <button
-                type="button"
-                onClick={() => setOpenPostcode(false)}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
-              >
-                닫기
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 bg-white">
-              <DaumPostcodeEmbed
-                style={{ width: '100%', height: '100%' }}
-                onComplete={(data) => {
-                  setProfileForm((current) => ({
-                    ...current,
-                    address: data.address,
-                  }));
-
-                  setOpenPostcode(false);
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }
