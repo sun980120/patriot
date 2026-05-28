@@ -129,7 +129,9 @@ public class DashboardService {
             payment.getMonth(),
             payment.isPaid(),
             payment.getChargedAmount(),
-            payment.getAppliedGrade()
+            payment.getAppliedGrade(),
+            payment.isManualExempt(),
+            payment.getExemptionReason()
         );
     }
 

@@ -44,6 +44,12 @@ public class MembershipPayment extends BaseEntity {
     @Column(nullable = false)
     private MemberGrade appliedGrade;
 
+    @Column(name = "manual_exempt")
+    private Boolean manualExempt = false;
+
+    @Column(name = "exemption_reason")
+    private String exemptionReason;
+
     @Builder
     private MembershipPayment(FiscalYear fiscalYear, Member member, Integer month, boolean paid, Integer chargedAmount, MemberGrade appliedGrade) {
         this.fiscalYear = fiscalYear;
@@ -57,6 +63,26 @@ public class MembershipPayment extends BaseEntity {
     public void toggle(boolean nextPaid, int amount, MemberGrade grade) {
         this.paid = nextPaid;
         this.chargedAmount = nextPaid ? amount : 0;
+        this.appliedGrade = grade;
+        this.manualExempt = false;
+        this.exemptionReason = null;
+    }
+
+    public boolean isManualExempt() {
+        return Boolean.TRUE.equals(manualExempt);
+    }
+
+    public void applyManualExemption(String reason, MemberGrade grade) {
+        this.paid = false;
+        this.chargedAmount = 0;
+        this.appliedGrade = grade;
+        this.manualExempt = true;
+        this.exemptionReason = reason;
+    }
+
+    public void clearManualExemption(MemberGrade grade) {
+        this.manualExempt = false;
+        this.exemptionReason = null;
         this.appliedGrade = grade;
     }
 }

@@ -4,6 +4,7 @@ import com.patriot.finance.domain.entity.FiscalYear;
 import com.patriot.finance.domain.entity.Member;
 import com.patriot.finance.domain.entity.MembershipPayment;
 import com.patriot.finance.domain.enums.MemberGrade;
+import com.patriot.finance.dto.ManualPaymentExemptionRequest;
 import com.patriot.finance.dto.PaymentResponse;
 import com.patriot.finance.dto.TogglePaymentRequest;
 import com.patriot.finance.repository.FiscalYearRepository;
@@ -50,6 +51,10 @@ public class PaymentService {
                 .appliedGrade(member.getMemberGrade())
                 .build());
 
+        if (payment.isManualExempt()) {
+            throw new IllegalArgumentException("수동 면제 처리된 달은 납부 처리할 수 없습니다.");
+        }
+
         if (isFeeExempt(member, fiscalYear.getYear(), request.month())) {
             throw new IllegalArgumentException("회비 면제 기간에는 납부 처리할 수 없습니다.");
         }
@@ -61,6 +66,36 @@ public class PaymentService {
         return toResponse(paymentRepository.save(payment));
     }
 
+    @Transactional
+    public PaymentResponse updateManualExemption(ManualPaymentExemptionRequest request) {
+        FiscalYear fiscalYear = fiscalYearRepository.findById(request.fiscalYearId())
+            .orElseThrow(() -> new IllegalArgumentException("연도를 찾을 수 없습니다."));
+        Member member = memberRepository.findById(request.memberId())
+            .orElseThrow(() -> new IllegalArgumentException("회원을 찾을 수 없습니다."));
+
+        MembershipPayment payment = paymentRepository.findByFiscalYearIdAndMemberIdAndMonth(
+                request.fiscalYearId(), request.memberId(), request.month())
+            .orElseGet(() -> MembershipPayment.builder()
+                .fiscalYear(fiscalYear)
+                .member(member)
+                .month(request.month())
+                .paid(false)
+                .chargedAmount(0)
+                .appliedGrade(member.getMemberGrade())
+                .build());
+
+        if (request.exempt()) {
+            if (payment.isPaid()) {
+                throw new IllegalArgumentException("이미 납부 완료된 달은 먼저 납부 취소 후 면제 처리하세요.");
+            }
+            payment.applyManualExemption(normalizeReason(request.reason()), member.getMemberGrade());
+        } else {
+            payment.clearManualExemption(member.getMemberGrade());
+        }
+
+        return toResponse(paymentRepository.save(payment));
+    }
+
     private PaymentResponse toResponse(MembershipPayment payment) {
         return new PaymentResponse(
             payment.getId(),
@@ -69,8 +104,17 @@ public class PaymentService {
             payment.getMonth(),
             payment.isPaid(),
             payment.getChargedAmount(),
-            payment.getAppliedGrade()
+            payment.getAppliedGrade(),
+            payment.isManualExempt(),
+            payment.getExemptionReason()
         );
+    }
+
+    private String normalizeReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return null;
+        }
+        return reason.trim();
     }
 
     private int feeFor(MemberGrade grade) {

@@ -25,13 +25,19 @@ app:
     expiration-seconds: ${PATRIOT_JWT_EXPIRATION_SECONDS:43200}
   cors:
     allowed-origins: ${PATRIOT_ALLOWED_ORIGINS:https://patriot-phi.vercel.app}
-    # allowed-origins: ${PATRIOT_ALLOWED_ORIGINS:http://localhost:3000}
+    # allowed-origins: ${PATRIOT_ALLOWED_ORIGINS:http://192.168.54.65:3000}
   bootstrap:
     super-admin-email: ${PATRIOT_SUPER_ADMIN_EMAIL:woosung9801@gmail.com}
     super-admin-username: ${PATRIOT_SUPER_ADMIN_USERNAME:root}
     super-admin-password: ${PATRIOT_SUPER_ADMIN_PASSWORD:0120}
     super-admin-name: ${PATRIOT_SUPER_ADMIN_NAME:홍우성}
     seed-demo-data: ${PATRIOT_BOOTSTRAP_SEED_DEMO_DATA:false}
+  notifications:
+    scheduler-enabled: ${PATRIOT_NOTIFICATION_SCHEDULER_ENABLED:false}
+    vapid:
+      public-key: ${PATRIOT_VAPID_PUBLIC_KEY:BCBPuJZdXFna2JpHdbMN9QmrNbnb_x_ZLjjun07w5aHHlGxKLG-fp2-Rw8lDhlT4_dULpPxOWgflQWVOYS6BybM}
+      private-key: ${PATRIOT_VAPID_PRIVATE_KEY:w0KHQwqf3lS5aa41M2_OKk5Qi8Z42Y-mF9LqdEszYSE}
+      subject: ${PATRIOT_VAPID_SUBJECT:mailto:woosung9801@gmail.com}
 
 management:
   endpoints:
