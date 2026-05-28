@@ -137,6 +137,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [financeTab, setFinanceTab] = useState<'income' | 'expense'>('income');
   const [chargeTab, setChargeTab] = useState<'unpaid' | 'paid'>('unpaid');
   const [noticeTab, setNoticeTab] = useState<'monthly' | 'additional'>('monthly');
+  const [adminNoticeTab, setAdminNoticeTab] = useState<'monthly' | 'additional'>('monthly');
   const [actionMessage, setActionMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
@@ -324,6 +325,33 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const hasAdditionalNotice = unpaidChargeAssignments.length > 0;
   const showInAppNotice = hasMonthlyNotice || hasAdditionalNotice;
 
+  const additionalReminderTargets = useMemo(() => {
+    if (!selectedYear) return [];
+
+    const activeProfileMap = new Map(activeApprovedProfiles.map((member) => [member.id, member]));
+
+    return data.chargeGroups
+      .filter((group) => group.fiscal_year_id === selectedYear.id)
+      .flatMap((group) =>
+        group.participant_charges
+          .filter((charge) => charge.status === 'UNPAID')
+          .map((charge) => {
+            const member = activeProfileMap.get(charge.member_id);
+            if (!member) return null;
+            return { member, charge, group };
+          })
+          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      )
+      .sort((a, b) => {
+        const memberOrder = compareMembers(a.member, b.member);
+        if (memberOrder !== 0) return memberOrder;
+        const aDate = a.group.event_date ?? '9999-12-31';
+        const bDate = b.group.event_date ?? '9999-12-31';
+        if (aDate !== bDate) return aDate.localeCompare(bDate);
+        return a.group.title.localeCompare(b.group.title, 'ko');
+      });
+  }, [activeApprovedProfiles, data.chargeGroups, selectedYear]);
+
   useEffect(() => {
     if (noticeTab === 'monthly' && !hasMonthlyNotice && hasAdditionalNotice) {
       setNoticeTab('additional');
@@ -332,6 +360,13 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
       setNoticeTab('monthly');
     }
   }, [hasAdditionalNotice, hasMonthlyNotice, noticeTab]);
+
+  useEffect(() => {
+    if (!adminMode) return;
+    if (adminNoticeTab === 'monthly' && !currentMonthReminder?.targets.length && additionalReminderTargets.length) {
+      setAdminNoticeTab('additional');
+    }
+  }, [additionalReminderTargets.length, adminMode, adminNoticeTab, currentMonthReminder?.targets.length]);
 
   const summary = useMemo(() => {
     const yearMembershipIncome = selectedYear
@@ -721,20 +756,6 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
     setActionMessage(`${paymentGuide.label} 정보가 복사되었습니다.`);
   };
 
-  const handleCopyMonthlyReminderTargets = async () => {
-    if (!currentMonthReminder?.targets.length) return;
-
-    const lines = currentMonthReminder.targets.map(({ member, amount }) => {
-      const name = member.full_name;
-      const phone = member.phone_number ? ` / ${member.phone_number}` : '';
-      return `${name}${phone}: ${currentMonthReminder.month}월 회비 ${amount.toLocaleString('ko-KR')}원, ${buildTransferText(amount)}`;
-    });
-
-    await navigator.clipboard.writeText(lines.join('\n'));
-    setToastTone('success');
-    setActionMessage('관리자용 알림 대상 리스트가 복사되었습니다.');
-  };
-
   const handleSendMonthlyDuesPush = () => {
     if (!adminMode) return;
     setActionMessage('');
@@ -1005,7 +1026,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                 <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Notification Center</p>
                 <h2 className="mt-2 text-2xl font-black text-slate-900">관리자용 알림 대상 리스트</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  매월 1일과 5일에 이번 달 회비 미납 대상자에게 안내하면 됩니다.
+                  월회비 미납과 추가비용 미납 대상을 분리해서 확인합니다.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 text-sm font-semibold">
@@ -1013,24 +1034,33 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                   {currentMonthReminder.reminderDay ? '오늘 알림 권장일' : `다음 알림 ${formatDateLabel(currentMonthReminder.nextReminderDate)}`}
                 </span>
                 <span className="rounded-full bg-amber-100 px-4 py-2 text-amber-900">
-                  대상 {currentMonthReminder.targets.length}명
+                  대상 {adminNoticeTab === 'monthly' ? currentMonthReminder.targets.length : additionalReminderTargets.length}건
                 </span>
               </div>
             </div>
 
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">
-                기준: {currentMonthReminder.fiscalYear ? `${currentMonthReminder.fiscalYear.year}년 ${currentMonthReminder.month}월` : `${currentMonthReminder.month}월`} 미납 회비
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2">
+            <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="inline-flex w-fit rounded-full bg-slate-100 p-1 text-sm font-bold">
                 <button
                   type="button"
-                  disabled={!currentMonthReminder.targets.length}
-                  onClick={handleCopyMonthlyReminderTargets}
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  onClick={() => setAdminNoticeTab('monthly')}
+                  className={`rounded-full px-4 py-2 transition ${
+                    adminNoticeTab === 'monthly' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  대상 리스트 복사
+                  월회비 {currentMonthReminder.targets.length}명
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminNoticeTab('additional')}
+                  className={`rounded-full px-4 py-2 transition ${
+                    adminNoticeTab === 'additional' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  추가비용 {additionalReminderTargets.length}건
+                </button>
+              </div>
+              {adminNoticeTab === 'monthly' ? (
                 <button
                   type="button"
                   disabled={!currentMonthReminder.targets.length}
@@ -1039,34 +1069,76 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                 >
                   푸시 알림 발송
                 </button>
-              </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4">
+              <p className="text-sm text-slate-500">
+                기준: {adminNoticeTab === 'monthly'
+                  ? `${currentMonthReminder.fiscalYear ? `${currentMonthReminder.fiscalYear.year}년 ` : ''}${currentMonthReminder.month}월 미납 회비`
+                  : `${selectedYear.year}년 미납 추가비용`}
+              </p>
             </div>
 
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              {currentMonthReminder.targets.length ? currentMonthReminder.targets.map(({ member, amount }) => (
-                <article key={member.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-lg font-black text-slate-900">{member.full_name}</h3>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {member.username ?? '아이디 없음'} · {member.member_grade}
-                      </p>
-                      <p className="mt-2 text-sm text-slate-500">
-                        {member.phone_number ?? '전화번호 없음'}
-                      </p>
+              {adminNoticeTab === 'monthly' ? (
+                currentMonthReminder.targets.length ? currentMonthReminder.targets.map(({ member, amount }) => (
+                  <article key={member.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-black text-slate-900">{member.full_name}</h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {member.username ?? '아이디 없음'} · {member.member_grade}
+                        </p>
+                        <p className="mt-2 text-sm text-slate-500">
+                          {member.phone_number ?? '전화번호 없음'}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">
+                        {formatCurrency(amount)}
+                      </span>
                     </div>
-                    <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">
-                      {formatCurrency(amount)}
-                    </span>
+                    <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-sm text-slate-500">
+                      {buildTransferText(amount)}
+                    </p>
+                  </article>
+                )) : (
+                  <div className="lg:col-span-2">
+                    <EmptyState text="현재 알림을 보낼 월회비 미납 대상자가 없습니다." />
                   </div>
-                  <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-sm text-slate-500">
-                    {buildTransferText(amount)}
-                  </p>
-                </article>
-              )) : (
-                <div className="lg:col-span-2">
-                  <EmptyState text="현재 알림을 보낼 월회비 미납 대상자가 없습니다." />
-                </div>
+                )
+              ) : (
+                additionalReminderTargets.length ? additionalReminderTargets.map(({ member, charge, group }) => (
+                  <article key={`${group.id}-${charge.id}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
+                          {ADDITIONAL_CHARGE_LABELS[group.category]}
+                        </p>
+                        <h3 className="mt-1 text-lg font-black text-slate-900">{member.full_name}</h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {member.username ?? '아이디 없음'} · {member.member_grade}
+                        </p>
+                        <p className="mt-2 text-sm text-slate-500">
+                          {group.title} · 마감 {group.event_date ?? '미정'}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {member.phone_number ?? '전화번호 없음'}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">
+                        {formatCurrency(charge.amount)}
+                      </span>
+                    </div>
+                    <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-sm text-slate-500">
+                      {buildTransferText(charge.amount)}
+                    </p>
+                  </article>
+                )) : (
+                  <div className="lg:col-span-2">
+                    <EmptyState text="현재 알림을 보낼 추가비용 미납 대상자가 없습니다." />
+                  </div>
+                )
               )}
             </div>
           </section>
