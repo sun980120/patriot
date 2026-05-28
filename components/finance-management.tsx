@@ -586,7 +586,15 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           <select value={chargeForm.category} onChange={(event) => setChargeForm((current) => ({ ...current, category: event.target.value as AdditionalChargeCategory }))} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none">
             {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          <input value={chargeForm.eventDate} onChange={(event) => setChargeForm((current) => ({ ...current, eventDate: event.target.value }))} type="date" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          <label className="block rounded-2xl border border-slate-200 bg-white px-4 py-2.5 focus-within:border-brand-400">
+            <span className="block text-xs font-semibold text-slate-400">마감 날짜</span>
+            <input
+              value={chargeForm.eventDate}
+              onChange={(event) => setChargeForm((current) => ({ ...current, eventDate: event.target.value }))}
+              type="date"
+              className="mt-1 w-full bg-transparent text-sm text-slate-900 focus:outline-none"
+            />
+          </label>
           <input value={chargeForm.supportAmount} onChange={(event) => setChargeForm((current) => ({ ...current, supportAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="회비 공용지원 금액 (없으면 비워두기)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
           <input value={chargeForm.totalExpenseAmount} onChange={(event) => setChargeForm((current) => ({ ...current, totalExpenseAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="총 지출 금액" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
           <select
@@ -691,7 +699,9 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">{CATEGORY_LABELS[group.category]}</p>
                     <h4 className="mt-1 text-lg font-black text-slate-900">{group.title}</h4>
-                    <p className="mt-2 text-sm text-slate-500">{group.event_date ? `${group.event_date} · ` : ''}공용 지원 {formatCurrency(group.support_amount)}</p>
+                    <p className="mt-2 text-sm text-slate-500">
+                      마감 {group.event_date ?? '미정'} · 공용 지원 {formatCurrency(group.support_amount)}
+                    </p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
                       <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">참가 {group.participant_charges.length}명</span>
                       <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">납부 {paidCount}명</span>

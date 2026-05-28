@@ -6,6 +6,7 @@ import com.patriot.finance.domain.entity.MembershipPayment;
 import com.patriot.finance.domain.entity.PushSubscription;
 import com.patriot.finance.domain.enums.ApprovalStatus;
 import com.patriot.finance.domain.enums.MemberGrade;
+import com.patriot.finance.domain.enums.NotificationType;
 import com.patriot.finance.dto.PushSendResponse;
 import com.patriot.finance.dto.PushSubscriptionRequest;
 import com.patriot.finance.dto.VapidPublicKeyResponse;
@@ -49,6 +50,7 @@ public class PushNotificationService {
     private final MemberRepository memberRepository;
     private final FiscalYearRepository fiscalYearRepository;
     private final MembershipPaymentRepository paymentRepository;
+    private final AppNotificationService appNotificationService;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     @Value("${app.notifications.vapid.public-key:}")
@@ -105,21 +107,29 @@ public class PushNotificationService {
             return new PushSendResponse(0, 0, 0, "현재 월에 해당하는 연도 데이터가 없습니다.");
         }
 
-        List<UUID> targetMemberIds = memberRepository.findAll().stream()
+        List<Member> targetMembers = memberRepository.findAll().stream()
             .filter(Member::isActive)
             .filter(member -> member.getApprovalStatus() == ApprovalStatus.APPROVED)
             .filter(member -> member.getMemberGrade() != MemberGrade.간사)
             .filter(member -> !member.isExemptFor(fiscalYear.getYear(), today.getMonthValue()))
             .filter(member -> isMonthlyDueUnpaid(fiscalYear, member, today.getMonthValue()))
-            .map(Member::getId)
             .toList();
 
-        if (targetMemberIds.isEmpty()) {
+        if (targetMembers.isEmpty()) {
             return new PushSendResponse(0, 0, 0, "이번 달 회비 알림 대상자가 없습니다.");
         }
 
+        targetMembers.forEach(member -> appNotificationService.create(
+            member.getId(),
+            NotificationType.MONTHLY_DUES,
+            today.getMonthValue() + "월 회비 납부 안내",
+            "매월 1일부터 5일까지 회비 납부 기간입니다. 납부 현황을 확인해 주세요.",
+            "/dashboard"
+        ));
+
+        List<UUID> targetMemberIds = targetMembers.stream().map(Member::getId).toList();
         List<PushSubscription> subscriptions = pushSubscriptionRepository.findByMemberIdInAndActiveTrue(targetMemberIds);
-        return sendToSubscriptions(subscriptions, "이번 달 회비 알림을 발송했습니다.");
+        return sendToSubscriptions(subscriptions, targetMembers.size(), "이번 달 회비 앱 알림을 저장했습니다.");
     }
 
     private boolean isMonthlyDueUnpaid(FiscalYear fiscalYear, Member member, int month) {
@@ -129,8 +139,12 @@ public class PushNotificationService {
     }
 
     private PushSendResponse sendToSubscriptions(List<PushSubscription> subscriptions, String message) {
+        return sendToSubscriptions(subscriptions, subscriptions.size(), message);
+    }
+
+    private PushSendResponse sendToSubscriptions(List<PushSubscription> subscriptions, int targetCount, String message) {
         if (!isVapidConfigured()) {
-            return new PushSendResponse(subscriptions.size(), 0, subscriptions.size(), "VAPID 키가 설정되지 않았습니다.");
+            return new PushSendResponse(targetCount, 0, subscriptions.size(), "VAPID 키가 설정되지 않았습니다.");
         }
 
         int sent = 0;
@@ -153,7 +167,7 @@ public class PushNotificationService {
             }
         }
 
-        return new PushSendResponse(subscriptions.size(), sent, failed, message);
+        return new PushSendResponse(targetCount, sent, failed, message);
     }
 
     private int sendNoPayload(PushSubscription subscription) throws Exception {

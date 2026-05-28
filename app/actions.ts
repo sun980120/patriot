@@ -211,7 +211,7 @@ export async function sendTestPushNotificationAction(): Promise<ActionResult> {
 }
 
 export async function sendMonthlyDuesPushReminderAction(): Promise<ActionResult> {
-  const result = await serverApiFetch<{ sentCount: number; failedCount: number; message: string }>('/api/notifications/monthly-dues/remind', {
+  const result = await serverApiFetch<{ targetCount: number; sentCount: number; failedCount: number; message: string }>('/api/notifications/monthly-dues/remind', {
     method: 'POST',
   });
 
@@ -219,10 +219,57 @@ export async function sendMonthlyDuesPushReminderAction(): Promise<ActionResult>
     return { ok: false, message: result.message ?? '월회비 푸시 알림 발송에 실패했습니다.' };
   }
 
+  const targetCount = result.data?.targetCount ?? 0;
+  const sentCount = result.data?.sentCount ?? 0;
+  const failedCount = result.data?.failedCount ?? 0;
+
+  if (targetCount > 0 && sentCount === 0 && failedCount === 0) {
+    return {
+      ok: true,
+      message: `앱 내부 알림 ${targetCount}건을 저장했습니다. 푸시 구독된 기기는 아직 없습니다.`,
+    };
+  }
+
   return {
     ok: true,
-    message: `${result.data?.message ?? '월회비 푸시 알림을 발송했습니다.'} 성공 ${result.data?.sentCount ?? 0}건, 실패 ${result.data?.failedCount ?? 0}건`,
+    message: `${result.data?.message ?? '월회비 알림을 처리했습니다.'} 앱 알림 ${targetCount}건, 푸시 성공 ${sentCount}건, 실패 ${failedCount}건`,
   };
+}
+
+export async function getNotificationUnreadCountAction(): Promise<ActionResult & { unreadCount?: number }> {
+  const result = await serverApiFetch<{ unreadCount: number }>('/api/app-notifications/unread-count');
+
+  if (!result.ok) {
+    return { ok: false, unreadCount: 0, message: result.message ?? '알림 개수를 확인할 수 없습니다.' };
+  }
+
+  return { ok: true, unreadCount: result.data?.unreadCount ?? 0 };
+}
+
+export async function markNotificationReadAction(notificationId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/app-notifications/${notificationId}/read`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '알림 읽음 처리에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function markAllNotificationsReadAction(): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/app-notifications/read-all', {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '알림 읽음 처리에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
 }
 
 export async function approveMemberAction(memberId: string): Promise<ActionResult> {

@@ -5,9 +5,8 @@ import { useRouter } from 'next/navigation';
 import { approveMemberAction, createFiscalYearAction, deletePendingMemberAction, sendMonthlyDuesPushReminderAction, togglePaymentAction, updateManualPaymentExemptionAction } from '@/app/actions';
 import { HIDDEN_PROFILE_EMAILS, ROLE_META, CLUB_BANK } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
-import type { DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
+import type { AdditionalChargeCategory, DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
-import { PwaNotificationCard } from '@/components/pwa-notification-card';
 
 function isAdmin(profile: Profile | null) {
   return profile?.app_role === 'admin' || profile?.app_role === 'super_admin';
@@ -17,6 +16,14 @@ const GRADE_ORDER: Record<Profile['member_grade'], number> = {
   간사: 0,
   정회원: 1,
   준회원: 2,
+};
+
+const ADDITIONAL_CHARGE_LABELS: Record<AdditionalChargeCategory, string> = {
+  JOIN_FEE: '가입비',
+  UNIFORM_FEE: '유니폼비',
+  DINNER_FEE: '회식비',
+  TOURNAMENT_FEE: '대회비',
+  ETC_FEE: '기타 비용',
 };
 
 function paymentAmount(payment?: PaymentRecord) {
@@ -129,6 +136,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [memberSearch, setMemberSearch] = useState('');
   const [financeTab, setFinanceTab] = useState<'income' | 'expense'>('income');
   const [chargeTab, setChargeTab] = useState<'unpaid' | 'paid'>('unpaid');
+  const [noticeTab, setNoticeTab] = useState<'monthly' | 'additional'>('monthly');
   const [actionMessage, setActionMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
@@ -248,12 +256,23 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
     [chargeTab, memberChargeAssignments]
   );
 
-  const unpaidAssignedChargeTotal = useMemo(
+  const unpaidChargeAssignments = useMemo(
     () =>
       memberChargeAssignments
         .filter(({ charge }) => charge.status === 'UNPAID')
-        .reduce((sum, { charge }) => sum + charge.amount, 0),
+        .sort((a, b) => {
+          const aDate = a.group.event_date ?? '9999-12-31';
+          const bDate = b.group.event_date ?? '9999-12-31';
+          if (aDate !== bDate) return aDate.localeCompare(bDate);
+          return a.group.title.localeCompare(b.group.title, 'ko');
+        }),
     [memberChargeAssignments]
+  );
+
+  const unpaidAssignedChargeTotal = useMemo(
+    () =>
+      unpaidChargeAssignments.reduce((sum, { charge }) => sum + charge.amount, 0),
+    [unpaidChargeAssignments]
   );
 
   const currentMonthReminder = useMemo(() => {
@@ -300,6 +319,19 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
       currentUserTarget: profile ? targets.find((item) => item.member.id === profile.id) ?? null : null,
     };
   }, [activeApprovedProfiles, data.payments, fiscalYears, profile, today]);
+
+  const hasMonthlyNotice = Boolean(currentMonthReminder?.currentUserTarget);
+  const hasAdditionalNotice = unpaidChargeAssignments.length > 0;
+  const showInAppNotice = hasMonthlyNotice || hasAdditionalNotice;
+
+  useEffect(() => {
+    if (noticeTab === 'monthly' && !hasMonthlyNotice && hasAdditionalNotice) {
+      setNoticeTab('additional');
+    }
+    if (noticeTab === 'additional' && !hasAdditionalNotice && hasMonthlyNotice) {
+      setNoticeTab('monthly');
+    }
+  }, [hasAdditionalNotice, hasMonthlyNotice, noticeTab]);
 
   const summary = useMemo(() => {
     const yearMembershipIncome = selectedYear
@@ -863,39 +895,108 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
     <>
       <FloatingToast open={Boolean(actionMessage)} message={actionMessage} tone={toastTone} onClose={() => setActionMessage('')} />
       <div className="min-w-0 space-y-6 sm:space-y-8">
+        {showInAppNotice ? (
+          <section className="glass-panel rounded-[28px] border border-amber-100 bg-amber-50/80 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+            <div className="flex flex-col gap-4 border-b border-amber-100 pb-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-amber-700">In-App Notice</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-900">납부 알림</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  월회비와 대회비, 회식비, 유니폼비 미납 항목을 한 곳에서 확인합니다.
+                </p>
+              </div>
+              <div className="inline-flex rounded-full bg-white/70 p-1">
+                <button
+                  type="button"
+                  disabled={!hasMonthlyNotice}
+                  onClick={() => setNoticeTab('monthly')}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:text-slate-300 ${
+                    noticeTab === 'monthly' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  월회비 {hasMonthlyNotice ? '1건' : '0건'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!hasAdditionalNotice}
+                  onClick={() => setNoticeTab('additional')}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:text-slate-300 ${
+                    noticeTab === 'additional' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  추가비용 {unpaidChargeAssignments.length}건
+                </button>
+              </div>
+            </div>
+
+            {noticeTab === 'monthly' && currentMonthReminder?.currentUserTarget ? (
+              <div className="mt-4 flex flex-col gap-4 rounded-3xl bg-white/75 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">이번 달 회비 납부 알림</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {currentMonthReminder.month}월 회비 {formatCurrency(currentMonthReminder.currentUserTarget.amount)}이 아직 미납 상태입니다.
+                    납부 기한은 매월 1일부터 5일까지입니다.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPaymentGuide({
+                      memberName: currentMonthReminder.currentUserTarget!.member.full_name,
+                      amount: currentMonthReminder.currentUserTarget!.amount,
+                      label: `${currentMonthReminder.month}월 회비`,
+                    })
+                  }
+                  className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                >
+                  납부 정보 보기
+                </button>
+              </div>
+            ) : null}
+
+            {noticeTab === 'additional' && hasAdditionalNotice ? (
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                {unpaidChargeAssignments.map(({ charge, group }) => (
+                  <article key={charge.id} className="rounded-3xl border border-amber-100 bg-white/75 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
+                          {ADDITIONAL_CHARGE_LABELS[group.category]}
+                        </p>
+                        <h3 className="mt-2 text-lg font-black text-slate-900">{group.title}</h3>
+                        <p className="mt-2 text-sm text-slate-500">
+                          마감 {group.event_date ?? '미정'} · 미납
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">
+                        {formatCurrency(charge.amount)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPaymentGuide({
+                          memberName: profile?.full_name ?? charge.member_name,
+                          amount: charge.amount,
+                          label: group.title,
+                        })
+                      }
+                      className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                    >
+                      납부 정보 보기
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <MetricCard label={`${selectedYear.year}년 총 세입`} value={formatCurrency(summary.totalIncome)} description="회비 + 추가 비용 + 기타 세입" />
           <MetricCard label={`${selectedYear.year}년 총 지출`} value={formatCurrency(summary.totalExpense)} description="해당 연도 지출 합계" />
           <MetricCard label="누적 남은 잔액" value={formatCurrency(summary.cumulativeBalance)} description="전체 누적 세입 - 전체 누적 지출" accent />
         </section>
-
-        {currentMonthReminder?.currentUserTarget ? (
-          <section className="glass-panel rounded-[28px] border border-amber-100 bg-amber-50/80 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-amber-700">In-App Notice</p>
-                <h2 className="mt-2 text-2xl font-black text-slate-900">이번 달 회비 납부 알림</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {currentMonthReminder.month}월 회비 {formatCurrency(currentMonthReminder.currentUserTarget.amount)}이 아직 미납 상태입니다.
-                  납부 기한은 매월 1일부터 5일까지입니다.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  setPaymentGuide({
-                    memberName: currentMonthReminder.currentUserTarget!.member.full_name,
-                    amount: currentMonthReminder.currentUserTarget!.amount,
-                    label: `${currentMonthReminder.month}월 회비`,
-                  })
-                }
-                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
-              >
-                납부 정보 보기
-              </button>
-            </div>
-          </section>
-        ) : null}
 
         {adminMode && currentMonthReminder ? (
           <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
@@ -972,18 +1073,6 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
         ) : null}
 
         {profile ? (
-          <PwaNotificationCard
-            monthlyDueLabel={
-              currentMonthReminder?.currentUserTarget
-                ? `${currentMonthReminder.month}월 회비 ${formatCurrency(currentMonthReminder.currentUserTarget.amount)}이 미납 상태입니다.`
-                : adminMode && currentMonthReminder
-                  ? `${currentMonthReminder.month}월 회비 알림 대상 ${currentMonthReminder.targets.length}명을 확인해 주세요.`
-                  : '회비 납부 현황을 확인해 주세요.'
-            }
-          />
-        ) : null}
-
-        {profile ? (
           <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
             <div className="flex flex-col gap-4 border-b border-slate-200/80 pb-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -1019,19 +1108,11 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
-                        {group.category === 'TOURNAMENT_FEE'
-                          ? '대회비'
-                          : group.category === 'DINNER_FEE'
-                            ? '회식비'
-                            : group.category === 'UNIFORM_FEE'
-                              ? '유니폼비'
-                              : group.category === 'JOIN_FEE'
-                                ? '가입비'
-                                : '기타 비용'}
+                        {ADDITIONAL_CHARGE_LABELS[group.category]}
                       </p>
                       <h4 className="mt-2 text-lg font-black text-slate-900">{group.title}</h4>
                       <p className="mt-2 text-sm text-slate-500">
-                        {group.event_date ?? '날짜 미정'} · {charge.status === 'PAID' ? '납부 완료' : '미납'}
+                        마감 {group.event_date ?? '미정'} · {charge.status === 'PAID' ? '납부 완료' : '미납'}
                       </p>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${charge.status === 'PAID' ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'}`}>
@@ -1637,7 +1718,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
       {paymentGuide ? (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
         <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-soft">
-          <h3 className="text-xl font-black text-slate-900">회비 납부 안내</h3>
+          <h3 className="text-xl font-black text-slate-900">납부 안내</h3>
           <p className="mt-2 text-sm text-slate-500">{paymentGuide.memberName} · {paymentGuide.label}</p>
 
           <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">

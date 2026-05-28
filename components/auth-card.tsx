@@ -6,6 +6,7 @@ import { useState, useTransition } from 'react';
 import { LogIn } from 'lucide-react';
 import { loginAction } from '@/app/actions';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
+import { LOGIN_NOTIFICATION_PROMPT_KEY } from '@/components/pwa-notification-prompt';
 
 export function AuthCard() {
   const [username, setUsername] = useState('');
@@ -26,6 +27,7 @@ export function AuthCard() {
         return;
       }
 
+      window.localStorage.setItem(LOGIN_NOTIFICATION_PROMPT_KEY, 'true');
       window.location.assign('/dashboard');
     });
   };

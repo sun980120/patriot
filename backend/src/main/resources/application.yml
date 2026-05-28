@@ -35,8 +35,8 @@ app:
   notifications:
     scheduler-enabled: ${PATRIOT_NOTIFICATION_SCHEDULER_ENABLED:false}
     vapid:
-      public-key: ${PATRIOT_VAPID_PUBLIC_KEY:BCBPuJZdXFna2JpHdbMN9QmrNbnb_x_ZLjjun07w5aHHlGxKLG-fp2-Rw8lDhlT4_dULpPxOWgflQWVOYS6BybM}
-      private-key: ${PATRIOT_VAPID_PRIVATE_KEY:w0KHQwqf3lS5aa41M2_OKk5Qi8Z42Y-mF9LqdEszYSE}
+      public-key: ${PATRIOT_VAPID_PUBLIC_KEY}
+      private-key: ${PATRIOT_VAPID_PRIVATE_KEY}
       subject: ${PATRIOT_VAPID_SUBJECT:mailto:woosung9801@gmail.com}
 
 management:
