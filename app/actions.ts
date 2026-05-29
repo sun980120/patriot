@@ -522,3 +522,57 @@ export async function deleteAdditionalChargeGroupAction(chargeGroupId: string): 
   refreshHome();
   return { ok: true };
 }
+
+export async function sendAdditionalChargeReminderAction(chargeGroupId: string): Promise<ActionResult> {
+  const result = await serverApiFetch<{ targetCount: number; sentCount: number; failedCount: number; message: string }>(
+    `/api/additional-charges/${chargeGroupId}/remind`,
+    { method: 'POST' }
+  );
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '추가비용 푸시 알림 발송에 실패했습니다.' };
+  }
+
+  const targetCount = result.data?.targetCount ?? 0;
+  const sentCount = result.data?.sentCount ?? 0;
+  const failedCount = result.data?.failedCount ?? 0;
+
+  if (targetCount > 0 && sentCount === 0 && failedCount === 0) {
+    return {
+      ok: true,
+      message: `앱 내부 알림 ${targetCount}건을 저장했습니다. 푸시 구독된 기기는 아직 없습니다.`,
+    };
+  }
+
+  return {
+    ok: true,
+    message: `${result.data?.message ?? '추가비용 알림을 처리했습니다.'} 앱 알림 ${targetCount}건, 푸시 성공 ${sentCount}건, 실패 ${failedCount}건`,
+  };
+}
+
+export async function sendAdditionalChargeFiscalYearReminderAction(fiscalYearId: string): Promise<ActionResult> {
+  const result = await serverApiFetch<{ targetCount: number; sentCount: number; failedCount: number; message: string }>(
+    `/api/additional-charges/remind?fiscalYearId=${encodeURIComponent(fiscalYearId)}`,
+    { method: 'POST' }
+  );
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '추가비용 푸시 알림 발송에 실패했습니다.' };
+  }
+
+  const targetCount = result.data?.targetCount ?? 0;
+  const sentCount = result.data?.sentCount ?? 0;
+  const failedCount = result.data?.failedCount ?? 0;
+
+  if (targetCount > 0 && sentCount === 0 && failedCount === 0) {
+    return {
+      ok: true,
+      message: `앱 내부 알림 ${targetCount}건을 저장했습니다. 푸시 구독된 기기는 아직 없습니다.`,
+    };
+  }
+
+  return {
+    ok: true,
+    message: `${result.data?.message ?? '추가비용 알림을 처리했습니다.'} 앱 알림 ${targetCount}건, 푸시 성공 ${sentCount}건, 실패 ${failedCount}건`,
+  };
+}

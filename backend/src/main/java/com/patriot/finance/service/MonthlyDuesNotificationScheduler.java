@@ -14,10 +14,17 @@ public class MonthlyDuesNotificationScheduler {
 
     private final PushNotificationService pushNotificationService;
 
-    @Scheduled(cron = "0 0 9 1,5 * *", zone = "Asia/Seoul")
+    @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
     public void sendMonthlyDuesReminder() {
         var result = pushNotificationService.sendMonthlyDuesReminder();
         log.info("Monthly dues push reminder finished. targets={}, sent={}, failed={}, message={}",
+            result.targetCount(), result.sentCount(), result.failedCount(), result.message());
+    }
+
+    @Scheduled(cron = "0 10 9 * * *", zone = "Asia/Seoul")
+    public void sendAdditionalChargeDeadlineReminder() {
+        var result = pushNotificationService.sendAdditionalChargeDeadlineReminders();
+        log.info("Additional charge deadline reminder finished. targets={}, sent={}, failed={}, message={}",
             result.targetCount(), result.sentCount(), result.failedCount(), result.message());
     }
 }

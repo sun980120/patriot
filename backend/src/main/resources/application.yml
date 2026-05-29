@@ -33,7 +33,7 @@ app:
     super-admin-name: ${PATRIOT_SUPER_ADMIN_NAME:홍우성}
     seed-demo-data: ${PATRIOT_BOOTSTRAP_SEED_DEMO_DATA:false}
   notifications:
-    scheduler-enabled: ${PATRIOT_NOTIFICATION_SCHEDULER_ENABLED:false}
+    scheduler-enabled: ${PATRIOT_NOTIFICATION_SCHEDULER_ENABLED:true}
     vapid:
       public-key: ${PATRIOT_VAPID_PUBLIC_KEY}
       private-key: ${PATRIOT_VAPID_PRIVATE_KEY}

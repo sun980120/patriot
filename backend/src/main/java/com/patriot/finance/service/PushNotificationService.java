@@ -2,16 +2,22 @@ package com.patriot.finance.service;
 
 import com.patriot.finance.domain.entity.FiscalYear;
 import com.patriot.finance.domain.entity.Member;
+import com.patriot.finance.domain.entity.ChargeGroup;
+import com.patriot.finance.domain.entity.MemberCharge;
 import com.patriot.finance.domain.entity.MembershipPayment;
 import com.patriot.finance.domain.entity.PushSubscription;
+import com.patriot.finance.domain.enums.AdditionalChargeCategory;
+import com.patriot.finance.domain.enums.AdditionalChargeStatus;
 import com.patriot.finance.domain.enums.ApprovalStatus;
 import com.patriot.finance.domain.enums.MemberGrade;
 import com.patriot.finance.domain.enums.NotificationType;
 import com.patriot.finance.dto.PushSendResponse;
 import com.patriot.finance.dto.PushSubscriptionRequest;
 import com.patriot.finance.dto.VapidPublicKeyResponse;
+import com.patriot.finance.repository.ChargeGroupRepository;
 import com.patriot.finance.repository.FiscalYearRepository;
 import com.patriot.finance.repository.MemberRepository;
+import com.patriot.finance.repository.MemberChargeRepository;
 import com.patriot.finance.repository.MembershipPaymentRepository;
 import com.patriot.finance.repository.PushSubscriptionRepository;
 import io.jsonwebtoken.Jwts;
@@ -31,6 +37,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -50,6 +57,8 @@ public class PushNotificationService {
     private final MemberRepository memberRepository;
     private final FiscalYearRepository fiscalYearRepository;
     private final MembershipPaymentRepository paymentRepository;
+    private final ChargeGroupRepository chargeGroupRepository;
+    private final MemberChargeRepository memberChargeRepository;
     private final AppNotificationService appNotificationService;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
@@ -99,43 +108,207 @@ public class PushNotificationService {
     @Transactional
     public PushSendResponse sendMonthlyDuesReminder() {
         LocalDate today = LocalDate.now(SEOUL);
-        FiscalYear fiscalYear = fiscalYearRepository.findByYear(today.getYear())
-            .filter(year -> year.getVisibleMonths().contains(today.getMonthValue()))
-            .orElse(null);
+        List<MonthlyDuePeriod> reminderPeriods = monthlyReminderPeriods(today);
 
-        if (fiscalYear == null) {
-            return new PushSendResponse(0, 0, 0, "현재 월에 해당하는 연도 데이터가 없습니다.");
+        if (reminderPeriods.isEmpty()) {
+            return new PushSendResponse(0, 0, 0, "오늘 알림 대상 회비 월이 없습니다.");
         }
 
         List<Member> targetMembers = memberRepository.findAll().stream()
             .filter(Member::isActive)
             .filter(member -> member.getApprovalStatus() == ApprovalStatus.APPROVED)
             .filter(member -> member.getMemberGrade() != MemberGrade.간사)
-            .filter(member -> !member.isExemptFor(fiscalYear.getYear(), today.getMonthValue()))
-            .filter(member -> isMonthlyDueUnpaid(fiscalYear, member, today.getMonthValue()))
+            .filter(member -> reminderPeriods.stream().anyMatch(period -> isMonthlyDueUnpaid(period.fiscalYear(), member, period.month())))
             .toList();
 
         if (targetMembers.isEmpty()) {
-            return new PushSendResponse(0, 0, 0, "이번 달 회비 알림 대상자가 없습니다.");
+            return new PushSendResponse(0, 0, 0, "월회비 알림 대상자가 없습니다.");
         }
 
         targetMembers.forEach(member -> appNotificationService.create(
             member.getId(),
             NotificationType.MONTHLY_DUES,
-            today.getMonthValue() + "월 회비 납부 안내",
-            "매월 1일부터 5일까지 회비 납부 기간입니다. 납부 현황을 확인해 주세요.",
+            "월회비 납부 안내",
+            "납부되지 않은 월회비가 있습니다. 납부 현황을 확인해 주세요.",
             "/dashboard"
         ));
 
         List<UUID> targetMemberIds = targetMembers.stream().map(Member::getId).toList();
         List<PushSubscription> subscriptions = pushSubscriptionRepository.findByMemberIdInAndActiveTrue(targetMemberIds);
-        return sendToSubscriptions(subscriptions, targetMembers.size(), "이번 달 회비 앱 알림을 저장했습니다.");
+        return sendToSubscriptions(subscriptions, targetMembers.size(), "월회비 앱 알림을 저장했습니다.");
+    }
+
+    @Transactional
+    public PushSendResponse sendAdditionalChargeCreated(ChargeGroup group, List<MemberCharge> charges) {
+        List<MemberCharge> targetCharges = charges.stream()
+            .filter(charge -> charge.getStatus() == AdditionalChargeStatus.UNPAID)
+            .filter(charge -> charge.getMember().isActive())
+            .filter(charge -> charge.getMember().getApprovalStatus() == ApprovalStatus.APPROVED)
+            .toList();
+
+        if (targetCharges.isEmpty()) {
+            return new PushSendResponse(0, 0, 0, "추가비용 생성 알림 대상자가 없습니다.");
+        }
+
+        targetCharges.forEach(charge -> appNotificationService.create(
+            charge.getMember().getId(),
+            NotificationType.ADDITIONAL_CHARGE,
+            group.getTitle() + " 납부 안내",
+            additionalChargeMessage(group, charge, "새 추가비용이 등록되었습니다."),
+            "/dashboard"
+        ));
+
+        List<UUID> targetMemberIds = targetCharges.stream()
+            .map(charge -> charge.getMember().getId())
+            .toList();
+        List<PushSubscription> subscriptions = pushSubscriptionRepository.findByMemberIdInAndActiveTrue(targetMemberIds);
+        return sendToSubscriptions(subscriptions, targetCharges.size(), "추가비용 생성 알림을 저장했습니다.");
+    }
+
+    @Transactional
+    public PushSendResponse sendAdditionalChargeDeadlineReminders() {
+        LocalDate today = LocalDate.now(SEOUL);
+        List<MemberCharge> targetCharges = chargeGroupRepository.findByEventDateLessThanEqual(today).stream()
+            .flatMap(group -> memberChargeRepository.findByChargeGroupIdOrderByCreatedAtDesc(group.getId()).stream())
+            .filter(charge -> charge.getStatus() == AdditionalChargeStatus.UNPAID)
+            .filter(charge -> charge.getMember().isActive())
+            .filter(charge -> charge.getMember().getApprovalStatus() == ApprovalStatus.APPROVED)
+            .toList();
+
+        if (targetCharges.isEmpty()) {
+            return new PushSendResponse(0, 0, 0, "마감일이 지난 추가비용 알림 대상자가 없습니다.");
+        }
+
+        targetCharges.forEach(charge -> appNotificationService.create(
+            charge.getMember().getId(),
+            NotificationType.ADDITIONAL_CHARGE,
+            charge.getChargeGroup().getTitle() + " 마감일 안내",
+            additionalChargeMessage(charge.getChargeGroup(), charge, "마감일이 지난 추가비용이 미납 상태입니다."),
+            "/dashboard"
+        ));
+
+        List<UUID> targetMemberIds = targetCharges.stream()
+            .map(charge -> charge.getMember().getId())
+            .distinct()
+            .toList();
+        List<PushSubscription> subscriptions = pushSubscriptionRepository.findByMemberIdInAndActiveTrue(targetMemberIds);
+        return sendToSubscriptions(subscriptions, targetCharges.size(), "추가비용 미납 알림을 저장했습니다.");
+    }
+
+    @Transactional
+    public PushSendResponse sendAdditionalChargeGroupReminder(UUID chargeGroupId) {
+        ChargeGroup group = chargeGroupRepository.findById(chargeGroupId)
+            .orElseThrow(() -> new IllegalArgumentException("추가 비용 이벤트를 찾을 수 없습니다."));
+
+        List<MemberCharge> targetCharges = memberChargeRepository.findByChargeGroupIdOrderByCreatedAtDesc(group.getId()).stream()
+            .filter(charge -> charge.getStatus() == AdditionalChargeStatus.UNPAID)
+            .filter(charge -> charge.getMember().isActive())
+            .filter(charge -> charge.getMember().getApprovalStatus() == ApprovalStatus.APPROVED)
+            .toList();
+
+        if (targetCharges.isEmpty()) {
+            return new PushSendResponse(0, 0, 0, "추가비용 알림 대상자가 없습니다.");
+        }
+
+        targetCharges.forEach(charge -> appNotificationService.create(
+            charge.getMember().getId(),
+            NotificationType.ADDITIONAL_CHARGE,
+            group.getTitle() + " 납부 안내",
+            additionalChargeMessage(group, charge, "추가비용 납부 안내입니다."),
+            "/dashboard"
+        ));
+
+        List<UUID> targetMemberIds = targetCharges.stream()
+            .map(charge -> charge.getMember().getId())
+            .distinct()
+            .toList();
+        List<PushSubscription> subscriptions = pushSubscriptionRepository.findByMemberIdInAndActiveTrue(targetMemberIds);
+        return sendToSubscriptions(subscriptions, targetCharges.size(), "추가비용 알림을 저장했습니다.");
+    }
+
+    @Transactional
+    public PushSendResponse sendAdditionalChargeFiscalYearReminder(UUID fiscalYearId) {
+        fiscalYearRepository.findById(fiscalYearId)
+            .orElseThrow(() -> new IllegalArgumentException("연도 정보를 찾을 수 없습니다."));
+
+        List<MemberCharge> targetCharges = memberChargeRepository.findByChargeGroupFiscalYearIdOrderByCreatedAtDesc(fiscalYearId).stream()
+            .filter(charge -> charge.getStatus() == AdditionalChargeStatus.UNPAID)
+            .filter(charge -> charge.getMember().isActive())
+            .filter(charge -> charge.getMember().getApprovalStatus() == ApprovalStatus.APPROVED)
+            .toList();
+
+        if (targetCharges.isEmpty()) {
+            return new PushSendResponse(0, 0, 0, "추가비용 알림 대상자가 없습니다.");
+        }
+
+        targetCharges.forEach(charge -> appNotificationService.create(
+            charge.getMember().getId(),
+            NotificationType.ADDITIONAL_CHARGE,
+            charge.getChargeGroup().getTitle() + " 납부 안내",
+            additionalChargeMessage(charge.getChargeGroup(), charge, "추가비용 납부 안내입니다."),
+            "/dashboard"
+        ));
+
+        List<UUID> targetMemberIds = targetCharges.stream()
+            .map(charge -> charge.getMember().getId())
+            .distinct()
+            .toList();
+        List<PushSubscription> subscriptions = pushSubscriptionRepository.findByMemberIdInAndActiveTrue(targetMemberIds);
+        return sendToSubscriptions(subscriptions, targetCharges.size(), "추가비용 알림을 저장했습니다.");
+    }
+
+    private List<MonthlyDuePeriod> monthlyReminderPeriods(LocalDate today) {
+        boolean currentMonthReminderDay = today.getDayOfMonth() == 1 || today.getDayOfMonth() == 5;
+
+        return fiscalYearRepository.findAll().stream()
+            .flatMap(fiscalYear -> fiscalYear.getVisibleMonths().stream()
+                .map(month -> new MonthlyDuePeriod(fiscalYear, month)))
+            .filter(period -> isReminderPeriod(today, currentMonthReminderDay, period))
+            .sorted(Comparator
+                .comparing((MonthlyDuePeriod period) -> period.fiscalYear().getYear())
+                .thenComparing(MonthlyDuePeriod::month))
+            .toList();
+    }
+
+    private boolean isReminderPeriod(LocalDate today, boolean currentMonthReminderDay, MonthlyDuePeriod period) {
+        boolean currentMonth =
+            period.fiscalYear().getYear().equals(today.getYear()) &&
+                period.month() == today.getMonthValue();
+        LocalDate overdueStartDate = LocalDate.of(period.fiscalYear().getYear(), period.month(), 6);
+        return !today.isBefore(overdueStartDate) || (currentMonthReminderDay && currentMonth);
     }
 
     private boolean isMonthlyDueUnpaid(FiscalYear fiscalYear, Member member, int month) {
+        if (member.isExemptFor(fiscalYear.getYear(), month)) {
+            return false;
+        }
+
         MembershipPayment payment = paymentRepository.findByFiscalYearIdAndMemberIdAndMonth(fiscalYear.getId(), member.getId(), month)
             .orElse(null);
         return payment == null || (!payment.isPaid() && !payment.isManualExempt());
+    }
+
+    private record MonthlyDuePeriod(FiscalYear fiscalYear, int month) {
+    }
+
+    private String additionalChargeMessage(ChargeGroup group, MemberCharge charge, String prefix) {
+        String deadline = group.getEventDate() == null ? "마감일 미정" : "마감일 " + group.getEventDate();
+        return "%s %s · %s · 납부금액 %,d원".formatted(
+            prefix,
+            categoryLabel(group.getCategory()),
+            deadline,
+            charge.getAmount()
+        );
+    }
+
+    private String categoryLabel(AdditionalChargeCategory category) {
+        return switch (category) {
+            case JOIN_FEE -> "가입비";
+            case UNIFORM_FEE -> "유니폼비";
+            case DINNER_FEE -> "회식비";
+            case TOURNAMENT_FEE -> "대회비";
+            case ETC_FEE -> "기타 비용";
+        };
     }
 
     private PushSendResponse sendToSubscriptions(List<PushSubscription> subscriptions, String message) {

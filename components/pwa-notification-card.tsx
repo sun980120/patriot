@@ -132,7 +132,7 @@ export function PwaNotificationCard({ monthlyDueLabel }: { monthlyDueLabel?: str
       await registration.showNotification(title, {
         body,
         icon: '/icon-192.png',
-        badge: '/icon-192.png',
+        badge: '/badge-96.png',
         tag: 'patriot-monthly-dues',
         data: { url: '/dashboard' },
       });

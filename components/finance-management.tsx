@@ -10,6 +10,7 @@ import {
   deleteExpenseEntryAction,
   deleteIncomeEntryAction,
   reopenAdditionalChargeSettlementAction,
+  sendAdditionalChargeReminderAction,
   settleAdditionalChargeSurplusAction,
   toggleAdditionalChargePaidAction,
 } from '@/app/actions';
@@ -533,6 +534,36 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     setMessage(`${group.title} 이벤트를 다시 수정할 수 있습니다.`);
   };
 
+  const sendChargeReminder = (group: ChargeGroup) => {
+    const unpaidCount = group.participant_charges.filter((charge) => charge.status === 'UNPAID').length;
+    if (!unpaidCount) {
+      setToastTone('info');
+      setMessage('현재 미납 참가자가 없습니다.');
+      return;
+    }
+
+    setToastTone('info');
+    setMessage(`${group.title} 미납자 ${unpaidCount}명에게 알림을 발송 중입니다.`);
+
+    if (source === 'spring') {
+      startTransition(async () => {
+        const result = await sendAdditionalChargeReminderAction(group.id);
+        if (!result.ok) {
+          setToastTone('error');
+          setMessage(result.message ?? '추가비용 알림 발송에 실패했습니다.');
+          return;
+        }
+        setToastTone('success');
+        setMessage(result.message ?? '추가비용 알림을 발송했습니다.');
+        router.refresh();
+      });
+      return;
+    }
+
+    setToastTone('success');
+    setMessage(`${group.title} 미납자 ${unpaidCount}명에게 알림을 보냈습니다.`);
+  };
+
   return (
     <>
       <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
@@ -749,6 +780,18 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                             정산 수정
                           </button>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={() => sendChargeReminder(group)}
+                          disabled={unpaidCount === 0 || isPending}
+                          className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                            unpaidCount === 0 || isPending
+                              ? 'cursor-not-allowed bg-slate-200 text-slate-500'
+                              : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          푸시 알림 발송
+                        </button>
                         <button
                           type="button"
                           onClick={() => deleteChargeGroup(group.id)}
