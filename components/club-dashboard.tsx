@@ -148,8 +148,25 @@ function getNextReminderDate(today: Date) {
   return new Date(year, month + 1, 1);
 }
 
-function getOverdueMonthlyPeriods(today: Date, fiscalYears: FiscalYear[]) {
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+function getMonthlyNoticePeriods(today: Date, fiscalYears: FiscalYear[]) {
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  return fiscalYears
+    .flatMap((fiscalYear) =>
+      fiscalYear.visible_months.map((month) => ({
+        fiscalYear,
+        month,
+        monthStart: new Date(fiscalYear.year, month - 1, 1),
+      }))
+    )
+    .filter((period) => period.monthStart <= currentMonthStart)
+    .sort((a, b) => {
+      if (a.fiscalYear.year !== b.fiscalYear.year) return a.fiscalYear.year - b.fiscalYear.year;
+      return a.month - b.month;
+    });
+}
+
+function getPushReminderMonthlyPeriods(today: Date, fiscalYears: FiscalYear[]) {  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth() + 1;
   const isCurrentMonthReminderDay = today.getDate() === 1 || today.getDate() === 5;
@@ -336,52 +353,55 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
     const reminderDay = today.getDate() === 1 || today.getDate() === 5;
     const nextReminderDate = getNextReminderDate(today);
-    const overduePeriods = getOverdueMonthlyPeriods(today, fiscalYears);
-    const latestPeriod = overduePeriods.at(-1) ?? null;
+    const noticePeriods = getMonthlyNoticePeriods(today, fiscalYears);
+    const pushPeriods = getPushReminderMonthlyPeriods(today, fiscalYears);
+    const latestPeriod = noticePeriods.at(-1) ?? null;
 
-    if (!overduePeriods.length) {
-      return {
+    const buildTargets = (periods: Array<{ fiscalYear: FiscalYear; month: number }>) =>
+      activeApprovedProfiles
+        .filter((member) => member.member_grade !== '간사')
+        .map((member) => {
+          const unpaidPeriods = periods.filter(({ fiscalYear, month }) => {
+            if (isFeeExempt(member, fiscalYears, data.payments, fiscalYear.year, month)) {
+              return false;
+            }
+
+            const payment = data.payments.find(
+              (item) => item.fiscal_year_id === fiscalYear.id && item.member_id === member.id && item.month === month
+            );
+            return !payment?.paid && !payment?.manual_exempt;
+          });
+
+          return {
+            member,
+            amount: ROLE_META[member.member_grade].fee * unpaidPeriods.length,
+            months: unpaidPeriods.map(({ fiscalYear, month }) => ({ year: fiscalYear.year, month })),
+          };
+        })
+        .filter((target) => target.amount > 0)
+        .sort((a, b) => compareMembers(a.member, b.member));
+
+    if (!noticePeriods.length) {      return {
         fiscalYear: null,
         month: today.getMonth() + 1,
         months: [],
         reminderDay,
         nextReminderDate,
         targets: [],
-        currentUserTarget: null,
+        pushTargets: [],        currentUserTarget: null,
       };
     }
 
-    const targets = activeApprovedProfiles
-      .filter((member) => member.member_grade !== '간사')
-      .map((member) => {
-        const unpaidPeriods = overduePeriods.filter(({ fiscalYear, month }) => {
-          if (isFeeExempt(member, fiscalYears, data.payments, fiscalYear.year, month)) {
-            return false;
-          }
-
-          const payment = data.payments.find(
-            (item) => item.fiscal_year_id === fiscalYear.id && item.member_id === member.id && item.month === month
-          );
-          return !payment?.paid && !payment?.manual_exempt;
-        });
-
-        return {
-          member,
-          amount: ROLE_META[member.member_grade].fee * unpaidPeriods.length,
-          months: unpaidPeriods.map(({ fiscalYear, month }) => ({ year: fiscalYear.year, month })),
-        };
-      })
-      .filter((target) => target.amount > 0)
-      .sort((a, b) => compareMembers(a.member, b.member));
-
+    const targets = buildTargets(noticePeriods);
+    const pushTargets = buildTargets(pushPeriods);
     return {
       fiscalYear: latestPeriod?.fiscalYear ?? null,
       month: latestPeriod?.month ?? today.getMonth() + 1,
-      months: overduePeriods.map(({ fiscalYear, month }) => ({ year: fiscalYear.year, month })),
+      months: noticePeriods.map(({ fiscalYear, month }) => ({ year: fiscalYear.year, month })),
       reminderDay,
       nextReminderDate,
       targets,
-      currentUserTarget: profile ? targets.find((item) => item.member.id === profile.id) ?? null : null,
+      pushTargets,      currentUserTarget: profile ? targets.find((item) => item.member.id === profile.id) ?? null : null,
     };
   }, [activeApprovedProfiles, data.payments, fiscalYears, profile, today]);
 
@@ -427,11 +447,10 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
   useEffect(() => {
     if (!adminMode) return;
-    if (adminNoticeTab === 'monthly' && !currentMonthReminder?.targets.length && additionalReminderTargets.length) {
+    if (adminNoticeTab === 'monthly' && !currentMonthReminder?.pushTargets.length && additionalReminderTargets.length) {
       setAdminNoticeTab('additional');
     }
-  }, [additionalReminderTargets.length, adminMode, adminNoticeTab, currentMonthReminder?.targets.length]);
-
+  }, [additionalReminderTargets.length, adminMode, adminNoticeTab, currentMonthReminder?.pushTargets.length]);
   const summary = useMemo(() => {
     const yearMembershipIncome = selectedYear
       ? data.payments
@@ -1109,8 +1128,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                   {currentMonthReminder.reminderDay ? '오늘 알림 권장일' : `다음 알림 ${formatDateLabel(currentMonthReminder.nextReminderDate)}`}
                 </span>
                 <span className="rounded-full bg-amber-100 px-4 py-2 text-amber-900">
-                  대상 {adminNoticeTab === 'monthly' ? currentMonthReminder.targets.length : additionalReminderTargets.length}건
-                </span>
+                  대상 {adminNoticeTab === 'monthly' ? currentMonthReminder.pushTargets.length : additionalReminderTargets.length}건                </span>
               </div>
             </div>
 
@@ -1123,8 +1141,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                     adminNoticeTab === 'monthly' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  월회비 {currentMonthReminder.targets.length}명
-                </button>
+                  월회비 {currentMonthReminder.pushTargets.length}명                </button>
                 <button
                   type="button"
                   onClick={() => setAdminNoticeTab('additional')}
@@ -1138,8 +1155,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
               {adminNoticeTab === 'monthly' ? (
                 <button
                   type="button"
-                  disabled={!currentMonthReminder.targets.length}
-                  onClick={handleSendMonthlyDuesPush}
+                  disabled={!currentMonthReminder.pushTargets.length}                  onClick={handleSendMonthlyDuesPush}
                   className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                 >
                   푸시 알림 발송
@@ -1158,8 +1174,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {adminNoticeTab === 'monthly' ? (
-                currentMonthReminder.targets.length ? currentMonthReminder.targets.map(({ member, amount, months }) => (
-                  <article key={member.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                currentMonthReminder.pushTargets.length ? currentMonthReminder.pushTargets.map(({ member, amount, months }) => (                  <article key={member.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-lg font-black text-slate-900">{member.full_name}</h3>
