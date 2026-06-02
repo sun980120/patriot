@@ -40,6 +40,8 @@ export type PaymentRecord = {
   paid: boolean;
   charged_amount: number;
   applied_grade: MemberGrade;
+  manual_exempt: boolean;
+  exemption_reason: string | null;
 };
 
 export type IncomeEntry = {

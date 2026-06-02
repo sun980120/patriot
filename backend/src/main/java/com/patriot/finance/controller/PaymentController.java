@@ -1,5 +1,6 @@
 package com.patriot.finance.controller;
 
+import com.patriot.finance.dto.ManualPaymentExemptionRequest;
 import com.patriot.finance.dto.PaymentResponse;
 import com.patriot.finance.dto.TogglePaymentRequest;
 import com.patriot.finance.service.PaymentService;
@@ -29,5 +30,10 @@ public class PaymentController {
     @PatchMapping("/toggle")
     public PaymentResponse toggle(@Valid @RequestBody TogglePaymentRequest request) {
         return paymentService.toggle(request);
+    }
+
+    @PatchMapping("/exemption")
+    public PaymentResponse exemption(@Valid @RequestBody ManualPaymentExemptionRequest request) {
+        return paymentService.updateManualExemption(request);
     }
 }

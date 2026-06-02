@@ -4,7 +4,9 @@ import com.patriot.finance.dto.ChargeGroupResponse;
 import com.patriot.finance.dto.CreateChargeGroupRequest;
 import com.patriot.finance.dto.MemberChargeResponse;
 import com.patriot.finance.dto.MemberChargeToggleRequest;
+import com.patriot.finance.dto.PushSendResponse;
 import com.patriot.finance.service.AdditionalChargeService;
+import com.patriot.finance.service.PushNotificationService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdditionalChargeController {
 
     private final AdditionalChargeService additionalChargeService;
+    private final PushNotificationService pushNotificationService;
 
     @GetMapping
     public List<ChargeGroupResponse> chargeGroups(@RequestParam UUID fiscalYearId) {
@@ -52,6 +55,16 @@ public class AdditionalChargeController {
     @PatchMapping("/{chargeGroupId}/reopen")
     public ChargeGroupResponse reopenSettlement(@PathVariable UUID chargeGroupId) {
         return additionalChargeService.reopenSettlement(chargeGroupId);
+    }
+
+    @PostMapping("/{chargeGroupId}/remind")
+    public PushSendResponse sendAdditionalChargeReminder(@PathVariable UUID chargeGroupId) {
+        return pushNotificationService.sendAdditionalChargeGroupReminder(chargeGroupId);
+    }
+
+    @PostMapping("/remind")
+    public PushSendResponse sendAdditionalChargeFiscalYearReminder(@RequestParam UUID fiscalYearId) {
+        return pushNotificationService.sendAdditionalChargeFiscalYearReminder(fiscalYearId);
     }
 
     @DeleteMapping("/{chargeGroupId}")

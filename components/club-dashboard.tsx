@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { approveMemberAction, createFiscalYearAction, deletePendingMemberAction, togglePaymentAction } from '@/app/actions';
+import { approveMemberAction, createFiscalYearAction, deletePendingMemberAction, sendAdditionalChargeFiscalYearReminderAction, sendMonthlyDuesPushReminderAction, togglePaymentAction, updateManualPaymentExemptionAction } from '@/app/actions';
 import { HIDDEN_PROFILE_EMAILS, ROLE_META, CLUB_BANK } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
-import type { DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
+import type { AdditionalChargeCategory, DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
 function isAdmin(profile: Profile | null) {
@@ -17,6 +17,38 @@ const GRADE_ORDER: Record<Profile['member_grade'], number> = {
   정회원: 1,
   준회원: 2,
 };
+
+const ADDITIONAL_CHARGE_LABELS: Record<AdditionalChargeCategory, string> = {
+  JOIN_FEE: '가입비',
+  UNIFORM_FEE: '유니폼비',
+  DINNER_FEE: '회식비',
+  TOURNAMENT_FEE: '대회비',
+  ETC_FEE: '기타 비용',
+};
+
+function approvalCardClass(grade: Profile['member_grade']) {
+  if (grade === '준회원') return 'border-amber-200 bg-amber-50/80';
+  if (grade === '간사') return 'border-emerald-200 bg-emerald-50/80';
+  return 'border-brand-200 bg-brand-50/80';
+}
+
+function approvalGradeBadgeClass(grade: Profile['member_grade']) {
+  if (grade === '준회원') return 'bg-amber-100 text-amber-900';
+  if (grade === '간사') return 'bg-emerald-100 text-emerald-900';
+  return 'bg-brand-100 text-brand-900';
+}
+
+function duesMemberSurfaceClass(grade: Profile['member_grade']) {
+  if (grade === '정회원') return 'border-brand-200 bg-brand-50/70';
+  if (grade === '준회원') return 'border-amber-200 bg-amber-50/70';
+  return 'border-slate-200 bg-white';
+}
+
+function duesTableRowClass(grade: Profile['member_grade']) {
+  if (grade === '정회원') return 'bg-brand-50/70';
+  if (grade === '준회원') return 'bg-amber-50/80';
+  return 'bg-white';
+}
 
 function paymentAmount(payment?: PaymentRecord) {
   return payment?.paid ? payment.charged_amount : 0;
@@ -50,6 +82,13 @@ function isFeeExempt(member: Profile, fiscalYears: FiscalYear[], payments: Payme
           item.month === visibleMonth
       );
 
+      if (payment?.manual_exempt) {
+        if (fiscalYear.year === year && visibleMonth === month) {
+          return false;
+        }
+        continue;
+      }
+
       if (payment?.paid) {
         if (fiscalYear.year === year && visibleMonth === month) {
           return false;
@@ -77,7 +116,7 @@ function buildPaymentButtonClass(staff: boolean, exempt: boolean, paid: boolean,
     return 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400';
   }
   if (exempt) {
-    return 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400';
+    return `${clickable ? 'cursor-pointer hover:border-brand-300 hover:text-brand-800' : 'cursor-not-allowed'} border-slate-200 bg-slate-100 text-slate-400`;
   }
   if (paid) {
     return 'border-emerald-300 bg-emerald-100 text-emerald-900';
@@ -99,6 +138,69 @@ function compareMembers(a: Profile, b: Profile) {
   return a.full_name.localeCompare(b.full_name, 'ko');
 }
 
+function getNextReminderDate(today: Date) {
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const day = today.getDate();
+
+  if (day <= 1) return new Date(year, month, 1);
+  if (day <= 5) return new Date(year, month, 5);
+  return new Date(year, month + 1, 1);
+}
+
+function getMonthlyNoticePeriods(today: Date, fiscalYears: FiscalYear[]) {
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  return fiscalYears
+    .flatMap((fiscalYear) =>
+      fiscalYear.visible_months.map((month) => ({
+        fiscalYear,
+        month,
+        monthStart: new Date(fiscalYear.year, month - 1, 1),
+      }))
+    )
+    .filter((period) => period.monthStart <= currentMonthStart)
+    .sort((a, b) => {
+      if (a.fiscalYear.year !== b.fiscalYear.year) return a.fiscalYear.year - b.fiscalYear.year;
+      return a.month - b.month;
+    });
+}
+
+function getPushReminderMonthlyPeriods(today: Date, fiscalYears: FiscalYear[]) {
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const isCurrentMonthReminderDay = today.getDate() === 1 || today.getDate() === 5;
+
+  return fiscalYears
+    .flatMap((fiscalYear) =>
+      fiscalYear.visible_months.map((month) => ({
+        fiscalYear,
+        month,
+        dueDate: new Date(fiscalYear.year, month - 1, 6),
+      }))
+    )
+    .filter((period) => {
+      const isCurrentMonth =
+        period.fiscalYear.year === currentYear && period.month === currentMonth;
+      return period.dueDate <= todayStart || (isCurrentMonthReminderDay && isCurrentMonth);
+    })
+    .sort((a, b) => {
+      if (a.fiscalYear.year !== b.fiscalYear.year) return a.fiscalYear.year - b.fiscalYear.year;
+      return a.month - b.month;
+    });
+}
+
+function formatDateLabel(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatMonthlyPeriods(periods: { year: number; month: number }[]) {
+  return periods
+    .map((period) => `${period.year}년 ${period.month}월`)
+    .join(', ');
+}
+
 export function ClubDashboard({ initialData, source }: { initialData: DashboardBundle; source: 'mock' | 'spring' }) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
@@ -107,12 +209,21 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const [memberSearch, setMemberSearch] = useState('');
   const [financeTab, setFinanceTab] = useState<'income' | 'expense'>('income');
   const [chargeTab, setChargeTab] = useState<'unpaid' | 'paid'>('unpaid');
+  const [noticeTab, setNoticeTab] = useState<'monthly' | 'additional'>('monthly');
+  const [adminNoticeTab, setAdminNoticeTab] = useState<'monthly' | 'additional'>('monthly');
   const [actionMessage, setActionMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [launchingAppKey, setLaunchingAppKey] = useState<string | null>(null);
   const [paymentGuide, setPaymentGuide] = useState<{ memberName: string; amount: number; label: string } | null>(null);
+  const [paymentActionTarget, setPaymentActionTarget] = useState<{ member: Profile; month: number } | null>(null);
+  const [paymentExemptionReason, setPaymentExemptionReason] = useState('');
+  const [today, setToday] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
 
   useEffect(() => {
     setData(initialData);
@@ -127,7 +238,22 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const fiscalYears = data.fiscalYears;
   const selectedYear = fiscalYears.find((item) => item.id === selectedYearId) ?? fiscalYears[0];
   const hasFiscalYear = Boolean(selectedYear);
-  const tableMinWidth = 420 + (selectedYear?.visible_months.length ?? 0) * 112 + 180;
+  const tableMinWidth = 284 + (selectedYear?.visible_months.length ?? 0) * 112 + 180;
+
+  useEffect(() => {
+    if (!paymentActionTarget || !selectedYear) {
+      setPaymentExemptionReason('');
+      return;
+    }
+
+    const payment = data.payments.find(
+      (item) =>
+        item.fiscal_year_id === selectedYear.id &&
+        item.member_id === paymentActionTarget.member.id &&
+        item.month === paymentActionTarget.month
+    );
+    setPaymentExemptionReason(payment?.exemption_reason ?? '');
+  }, [data.payments, paymentActionTarget, selectedYear]);
 
   const financialProfiles = useMemo(
     () =>
@@ -204,13 +330,132 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
     [chargeTab, memberChargeAssignments]
   );
 
-  const unpaidAssignedChargeTotal = useMemo(
+  const unpaidChargeAssignments = useMemo(
     () =>
       memberChargeAssignments
         .filter(({ charge }) => charge.status === 'UNPAID')
-        .reduce((sum, { charge }) => sum + charge.amount, 0),
+        .sort((a, b) => {
+          const aDate = a.group.event_date ?? '9999-12-31';
+          const bDate = b.group.event_date ?? '9999-12-31';
+          if (aDate !== bDate) return aDate.localeCompare(bDate);
+          return a.group.title.localeCompare(b.group.title, 'ko');
+        }),
     [memberChargeAssignments]
   );
+
+  const unpaidAssignedChargeTotal = useMemo(
+    () =>
+      unpaidChargeAssignments.reduce((sum, { charge }) => sum + charge.amount, 0),
+    [unpaidChargeAssignments]
+  );
+
+  const currentMonthReminder = useMemo(() => {
+    if (!today) return null;
+
+    const reminderDay = today.getDate() === 1 || today.getDate() === 5;
+    const nextReminderDate = getNextReminderDate(today);
+    const noticePeriods = getMonthlyNoticePeriods(today, fiscalYears);
+    const pushPeriods = getPushReminderMonthlyPeriods(today, fiscalYears);
+    const latestPeriod = noticePeriods.at(-1) ?? null;
+
+    const buildTargets = (periods: Array<{ fiscalYear: FiscalYear; month: number }>) =>
+      activeApprovedProfiles
+        .filter((member) => member.member_grade !== '간사')
+        .map((member) => {
+          const unpaidPeriods = periods.filter(({ fiscalYear, month }) => {
+            if (isFeeExempt(member, fiscalYears, data.payments, fiscalYear.year, month)) {
+              return false;
+            }
+
+            const payment = data.payments.find(
+              (item) => item.fiscal_year_id === fiscalYear.id && item.member_id === member.id && item.month === month
+            );
+            return !payment?.paid && !payment?.manual_exempt;
+          });
+
+          return {
+            member,
+            amount: ROLE_META[member.member_grade].fee * unpaidPeriods.length,
+            months: unpaidPeriods.map(({ fiscalYear, month }) => ({ year: fiscalYear.year, month })),
+          };
+        })
+        .filter((target) => target.amount > 0)
+        .sort((a, b) => compareMembers(a.member, b.member));
+
+    if (!noticePeriods.length) {
+      return {
+        fiscalYear: null,
+        month: today.getMonth() + 1,
+        months: [],
+        reminderDay,
+        nextReminderDate,
+        targets: [],
+        pushTargets: [],
+        currentUserTarget: null,
+      };
+    }
+
+    const targets = buildTargets(noticePeriods);
+    const pushTargets = buildTargets(pushPeriods);
+
+    return {
+      fiscalYear: latestPeriod?.fiscalYear ?? null,
+      month: latestPeriod?.month ?? today.getMonth() + 1,
+      months: noticePeriods.map(({ fiscalYear, month }) => ({ year: fiscalYear.year, month })),
+      reminderDay,
+      nextReminderDate,
+      targets,
+      pushTargets,
+      currentUserTarget: profile ? targets.find((item) => item.member.id === profile.id) ?? null : null,
+    };
+  }, [activeApprovedProfiles, data.payments, fiscalYears, profile, today]);
+
+  const hasMonthlyNotice = Boolean(currentMonthReminder?.currentUserTarget);
+  const hasAdditionalNotice = unpaidChargeAssignments.length > 0;
+  const showInAppNotice = hasMonthlyNotice || hasAdditionalNotice;
+
+  const additionalReminderTargets = useMemo(() => {
+    if (!selectedYear) return [];
+
+    const activeProfileMap = new Map(activeApprovedProfiles.map((member) => [member.id, member]));
+
+    return data.chargeGroups
+      .filter((group) => group.fiscal_year_id === selectedYear.id)
+      .flatMap((group) =>
+        group.participant_charges
+          .filter((charge) => charge.status === 'UNPAID')
+          .map((charge) => {
+            const member = activeProfileMap.get(charge.member_id);
+            if (!member) return null;
+            return { member, charge, group };
+          })
+          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      )
+      .sort((a, b) => {
+        const memberOrder = compareMembers(a.member, b.member);
+        if (memberOrder !== 0) return memberOrder;
+        const aDate = a.group.event_date ?? '9999-12-31';
+        const bDate = b.group.event_date ?? '9999-12-31';
+        if (aDate !== bDate) return aDate.localeCompare(bDate);
+        return a.group.title.localeCompare(b.group.title, 'ko');
+      });
+  }, [activeApprovedProfiles, data.chargeGroups, selectedYear]);
+
+  useEffect(() => {
+    if (noticeTab === 'monthly' && !hasMonthlyNotice && hasAdditionalNotice) {
+      setNoticeTab('additional');
+    }
+    if (noticeTab === 'additional' && !hasAdditionalNotice && hasMonthlyNotice) {
+      setNoticeTab('monthly');
+    }
+  }, [hasAdditionalNotice, hasMonthlyNotice, noticeTab]);
+
+  useEffect(() => {
+    if (!adminMode) return;
+    if (adminNoticeTab === 'monthly' && !currentMonthReminder?.pushTargets.length && additionalReminderTargets.length) {
+      setAdminNoticeTab('additional');
+    }
+  }, [additionalReminderTargets.length, adminMode, adminNoticeTab, currentMonthReminder?.pushTargets.length]);
 
   const summary = useMemo(() => {
     const yearMembershipIncome = selectedYear
@@ -265,6 +510,14 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
   const handleTogglePaid = (member: Profile, month: number) => {
     if (!adminMode || member.member_grade === '간사' || !selectedYear) return;
+    const currentPayment = data.payments.find(
+      (item) => item.fiscal_year_id === selectedYear.id && item.member_id === member.id && item.month === month
+    );
+    if (currentPayment?.manual_exempt) {
+      setToastTone('error');
+      setActionMessage('수동 면제 처리된 달은 납부 처리할 수 없습니다.');
+      return;
+    }
     if (isFeeExempt(member, fiscalYears, data.payments, selectedYear.year, month)) {
       setToastTone('error');
       setActionMessage('회비 면제 기간에는 납부 처리할 수 없습니다.');
@@ -286,6 +539,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
           paid: nextPaid,
           charged_amount: nextPaid ? ROLE_META[member.member_grade].fee : 0,
           applied_grade: member.member_grade,
+          manual_exempt: false,
+          exemption_reason: null,
         };
         return { ...current, payments: nextPayments };
       }
@@ -298,6 +553,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
         paid: true,
         charged_amount: ROLE_META[member.member_grade].fee,
         applied_grade: member.member_grade,
+        manual_exempt: false,
+        exemption_reason: null,
       };
       nextPaid = true;
 
@@ -320,6 +577,91 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
         }
       });
     }
+  };
+
+  const handleManualExemption = (member: Profile, month: number, exempt: boolean, reasonInput?: string) => {
+    if (!adminMode || member.member_grade === '간사' || !selectedYear) return;
+
+    const existing = data.payments.find(
+      (item) => item.fiscal_year_id === selectedYear.id && item.member_id === member.id && item.month === month
+    );
+
+    if (exempt && existing?.paid) {
+      setToastTone('error');
+      setActionMessage('이미 납부 완료된 달은 먼저 납부 취소 후 면제 처리하세요.');
+      return;
+    }
+
+    setActionMessage('');
+    const reason = exempt ? (reasonInput?.trim() || '운영진 승인') : null;
+    setToastTone('success');
+    setActionMessage(exempt ? '회비 면제가 처리되었습니다.' : '회비 면제가 해제되었습니다.');
+
+    setData((current) => {
+      const index = current.payments.findIndex(
+        (item) => item.fiscal_year_id === selectedYear.id && item.member_id === member.id && item.month === month
+      );
+
+      if (index >= 0) {
+        const nextPayments = [...current.payments];
+        nextPayments[index] = {
+          ...nextPayments[index],
+          paid: false,
+          charged_amount: 0,
+          applied_grade: member.member_grade,
+          manual_exempt: exempt,
+          exemption_reason: reason,
+        };
+        return { ...current, payments: nextPayments };
+      }
+
+      const newPayment: PaymentRecord = {
+        id: `payment-${selectedYear.id}-${member.id}-${month}`,
+        fiscal_year_id: selectedYear.id,
+        member_id: member.id,
+        month,
+        paid: false,
+        charged_amount: 0,
+        applied_grade: member.member_grade,
+        manual_exempt: exempt,
+        exemption_reason: reason,
+      };
+
+      return { ...current, payments: [...current.payments, newPayment] };
+    });
+
+    if (source === 'spring') {
+      startTransition(async () => {
+        const result = await updateManualPaymentExemptionAction({
+          fiscalYearId: selectedYear.id,
+          memberId: member.id,
+          month,
+          exempt,
+          reason: reason ?? undefined,
+        });
+
+        if (!result.ok) {
+          setToastTone('error');
+          setActionMessage(result.message ?? '수동 면제 설정 변경에 실패했습니다.');
+          router.refresh();
+        }
+      });
+    }
+  };
+
+  const openPaymentAction = (member: Profile, month: number) => {
+    if (!adminMode || member.member_grade === '간사' || !selectedYear) return;
+    setPaymentActionTarget({ member, month });
+  };
+
+  const handlePaymentActionTogglePaid = (member: Profile, month: number) => {
+    handleTogglePaid(member, month);
+    setPaymentActionTarget(null);
+  };
+
+  const handlePaymentActionManualExemption = (member: Profile, month: number, exempt: boolean) => {
+    handleManualExemption(member, month, exempt, paymentExemptionReason);
+    setPaymentActionTarget(null);
   };
 
   const handleApprove = (memberId: string) => {
@@ -345,6 +687,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                     paid: false,
                     charged_amount: 0,
                     applied_grade: approved.member_grade,
+                    manual_exempt: false,
+                    exemption_reason: null,
                   }]
             )
           )
@@ -429,6 +773,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
               paid: false,
               charged_amount: 0,
               applied_grade: member.member_grade,
+              manual_exempt: false,
+              exemption_reason: null,
             }]
       )
     );
@@ -499,6 +845,28 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
     setActionMessage(`${paymentGuide.label} 정보가 복사되었습니다.`);
   };
 
+  const handleSendMonthlyDuesPush = () => {
+    if (!adminMode) return;
+    setActionMessage('');
+
+    startTransition(async () => {
+      const result = await sendMonthlyDuesPushReminderAction();
+      setToastTone(result.ok ? 'success' : 'error');
+      setActionMessage(result.message ?? (result.ok ? '푸시 알림을 발송했습니다.' : '푸시 알림 발송에 실패했습니다.'));
+    });
+  };
+
+  const handleSendAdditionalChargePush = () => {
+    if (!adminMode || !selectedYear) return;
+    setActionMessage('');
+
+    startTransition(async () => {
+      const result = await sendAdditionalChargeFiscalYearReminderAction(selectedYear.id);
+      setToastTone(result.ok ? 'success' : 'error');
+      setActionMessage(result.message ?? (result.ok ? '추가비용 푸시 알림을 발송했습니다.' : '추가비용 푸시 알림 발송에 실패했습니다.'));
+    });
+  };
+
   const handleOpenMonthlyBankApp = async (app: 'toss' | 'kakaobank') => {
     if (!paymentGuide) return;
     await handleCopyMonthlyTransfer();
@@ -524,6 +892,29 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
       { once: true }
     );
   };
+
+  const paymentActionPayment =
+    paymentActionTarget && selectedYear
+      ? data.payments.find(
+          (item) =>
+            item.fiscal_year_id === selectedYear.id &&
+            item.member_id === paymentActionTarget.member.id &&
+            item.month === paymentActionTarget.month
+        )
+      : undefined;
+  const paymentActionManualExempt = Boolean(paymentActionPayment?.manual_exempt);
+  const paymentActionPaid = Boolean(paymentActionPayment?.paid);
+  const paymentActionAutoExempt =
+    Boolean(paymentActionTarget && selectedYear) &&
+    isFeeExempt(
+      paymentActionTarget!.member,
+      fiscalYears,
+      data.payments,
+      selectedYear!.year,
+      paymentActionTarget!.month
+    );
+  const paymentActionCanTogglePaid = Boolean(paymentActionTarget && !paymentActionAutoExempt && !paymentActionManualExempt);
+  const paymentActionCanManualExempt = Boolean(paymentActionTarget && !paymentActionPaid && !paymentActionAutoExempt);
 
   if (!hasFiscalYear) {
     return (
@@ -564,6 +955,8 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                               paid: false,
                               charged_amount: 0,
                               applied_grade: member.member_grade,
+                              manual_exempt: false,
+                              exemption_reason: null,
                             }]
                       )
                     );
@@ -623,11 +1016,237 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
     <>
       <FloatingToast open={Boolean(actionMessage)} message={actionMessage} tone={toastTone} onClose={() => setActionMessage('')} />
       <div className="min-w-0 space-y-6 sm:space-y-8">
+        {showInAppNotice ? (
+          <section className="glass-panel rounded-[28px] border border-amber-100 bg-amber-50/80 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+            <div className="flex flex-col gap-4 border-b border-amber-100 pb-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-amber-700">In-App Notice</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-900">납부 알림</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  월회비와 대회비, 회식비, 유니폼비 미납 항목을 한 곳에서 확인합니다.
+                </p>
+              </div>
+              <div className="inline-flex rounded-full bg-white/70 p-1">
+                <button
+                  type="button"
+                  disabled={!hasMonthlyNotice}
+                  onClick={() => setNoticeTab('monthly')}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:text-slate-300 ${
+                    noticeTab === 'monthly' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  월회비 {hasMonthlyNotice ? '1건' : '0건'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!hasAdditionalNotice}
+                  onClick={() => setNoticeTab('additional')}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:text-slate-300 ${
+                    noticeTab === 'additional' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  추가비용 {unpaidChargeAssignments.length}건
+                </button>
+              </div>
+            </div>
+
+            {noticeTab === 'monthly' && currentMonthReminder?.currentUserTarget ? (
+              <div className="mt-4 flex flex-col gap-4 rounded-3xl bg-white/75 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">월회비 납부 알림</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {formatMonthlyPeriods(currentMonthReminder.currentUserTarget.months)} 회비 {formatCurrency(currentMonthReminder.currentUserTarget.amount)}이 아직 미납 상태입니다.
+                    납부 기한은 매월 1일부터 5일까지입니다.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPaymentGuide({
+                      memberName: currentMonthReminder.currentUserTarget!.member.full_name,
+                      amount: currentMonthReminder.currentUserTarget!.amount,
+                      label: `${formatMonthlyPeriods(currentMonthReminder.currentUserTarget!.months)} 회비`,
+                    })
+                  }
+                  className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                >
+                  납부 정보 보기
+                </button>
+              </div>
+            ) : null}
+
+            {noticeTab === 'additional' && hasAdditionalNotice ? (
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                {unpaidChargeAssignments.map(({ charge, group }) => (
+                  <article key={charge.id} className="rounded-3xl border border-amber-100 bg-white/75 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
+                          {ADDITIONAL_CHARGE_LABELS[group.category]}
+                        </p>
+                        <h3 className="mt-2 text-lg font-black text-slate-900">{group.title}</h3>
+                        <p className="mt-2 text-sm text-slate-500">
+                          마감 {group.event_date ?? '미정'} · 미납
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">
+                        {formatCurrency(charge.amount)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPaymentGuide({
+                          memberName: profile?.full_name ?? charge.member_name,
+                          amount: charge.amount,
+                          label: group.title,
+                        })
+                      }
+                      className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                    >
+                      납부 정보 보기
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <MetricCard label={`${selectedYear.year}년 총 세입`} value={formatCurrency(summary.totalIncome)} description="회비 + 추가 비용 + 기타 세입" />
           <MetricCard label={`${selectedYear.year}년 총 지출`} value={formatCurrency(summary.totalExpense)} description="해당 연도 지출 합계" />
           <MetricCard label="누적 남은 잔액" value={formatCurrency(summary.cumulativeBalance)} description="전체 누적 세입 - 전체 누적 지출" accent />
         </section>
+
+        {adminMode && currentMonthReminder ? (
+          <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+            <div className="flex flex-col gap-4 border-b border-slate-200/80 pb-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Notification Center</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-900">관리자용 알림 대상 리스트</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  1일/5일에는 이번 달 미납자를, 6일부터는 기한이 지난 미납자를 확인합니다.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm font-semibold">
+                <span className={`rounded-full px-4 py-2 ${currentMonthReminder.reminderDay ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-600'}`}>
+                  {currentMonthReminder.reminderDay ? '오늘 알림 권장일' : `다음 알림 ${formatDateLabel(currentMonthReminder.nextReminderDate)}`}
+                </span>
+                <span className="rounded-full bg-amber-100 px-4 py-2 text-amber-900">
+                  대상 {adminNoticeTab === 'monthly' ? currentMonthReminder.pushTargets.length : additionalReminderTargets.length}건
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="inline-flex w-fit rounded-full bg-slate-100 p-1 text-sm font-bold">
+                <button
+                  type="button"
+                  onClick={() => setAdminNoticeTab('monthly')}
+                  className={`rounded-full px-4 py-2 transition ${
+                    adminNoticeTab === 'monthly' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  월회비 {currentMonthReminder.pushTargets.length}명
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminNoticeTab('additional')}
+                  className={`rounded-full px-4 py-2 transition ${
+                    adminNoticeTab === 'additional' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  추가비용 {additionalReminderTargets.length}건
+                </button>
+              </div>
+              {adminNoticeTab === 'monthly' ? (
+                <button
+                  type="button"
+                  disabled={!currentMonthReminder.pushTargets.length}
+                  onClick={handleSendMonthlyDuesPush}
+                  className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  푸시 알림 발송
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!additionalReminderTargets.length}
+                  onClick={handleSendAdditionalChargePush}
+                  className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  푸시 알림 발송
+                </button>
+              )}
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {adminNoticeTab === 'monthly' ? (
+                currentMonthReminder.pushTargets.length ? currentMonthReminder.pushTargets.map(({ member, amount, months }) => (
+                  <article key={member.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-black text-slate-900">{member.full_name}</h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {member.username ?? '아이디 없음'} · {member.member_grade}
+                        </p>
+                        <p className="mt-2 text-sm text-slate-500">
+                          미납 월: {formatMonthlyPeriods(months)}
+                        </p>
+                        <p className="mt-2 text-sm text-slate-500">
+                          {member.phone_number ?? '전화번호 없음'}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">
+                        {formatCurrency(amount)}
+                      </span>
+                    </div>
+                    <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-sm text-slate-500">
+                      {buildTransferText(amount)}
+                    </p>
+                  </article>
+                )) : (
+                  <div className="lg:col-span-2">
+                    <EmptyState text="현재 알림을 보낼 월회비 미납 대상자가 없습니다." />
+                  </div>
+                )
+              ) : (
+                additionalReminderTargets.length ? additionalReminderTargets.map(({ member, charge, group }) => (
+                  <article key={`${group.id}-${charge.id}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
+                          {ADDITIONAL_CHARGE_LABELS[group.category]}
+                        </p>
+                        <h3 className="mt-1 text-lg font-black text-slate-900">{member.full_name}</h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {member.username ?? '아이디 없음'} · {member.member_grade}
+                        </p>
+                        <p className="mt-2 text-sm text-slate-500">
+                          {group.title} · 마감 {group.event_date ?? '미정'}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {member.phone_number ?? '전화번호 없음'}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">
+                        {formatCurrency(charge.amount)}
+                      </span>
+                    </div>
+                    <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-sm text-slate-500">
+                      {buildTransferText(charge.amount)}
+                    </p>
+                  </article>
+                )) : (
+                  <div className="lg:col-span-2">
+                    <EmptyState text="현재 알림을 보낼 추가비용 미납 대상자가 없습니다." />
+                  </div>
+                )
+              )}
+            </div>
+          </section>
+        ) : null}
 
         {profile ? (
           <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
@@ -665,19 +1284,11 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
-                        {group.category === 'TOURNAMENT_FEE'
-                          ? '대회비'
-                          : group.category === 'DINNER_FEE'
-                            ? '회식비'
-                            : group.category === 'UNIFORM_FEE'
-                              ? '유니폼비'
-                              : group.category === 'JOIN_FEE'
-                                ? '가입비'
-                                : '기타 비용'}
+                        {ADDITIONAL_CHARGE_LABELS[group.category]}
                       </p>
                       <h4 className="mt-2 text-lg font-black text-slate-900">{group.title}</h4>
                       <p className="mt-2 text-sm text-slate-500">
-                        {group.event_date ?? '날짜 미정'} · {charge.status === 'PAID' ? '납부 완료' : '미납'}
+                        마감 {group.event_date ?? '미정'} · {charge.status === 'PAID' ? '납부 완료' : '미납'}
                       </p>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${charge.status === 'PAID' ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'}`}>
@@ -780,6 +1391,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
             <div className="mt-4 flex flex-wrap gap-3 text-sm">
               <span className="rounded-full bg-slate-100 px-4 py-2 text-slate-600">표시 월: {selectedYear.visible_months.map((month) => `${month}월`).join(' / ')}</span>
+              <span className="rounded-full bg-brand-100 px-4 py-2 text-brand-900">정회원</span>
               <span className="rounded-full bg-amber-100 px-4 py-2 text-amber-900">준회원</span>
               <span className="rounded-full bg-emerald-100 px-4 py-2 text-emerald-900">간사 회비 면제</span>
             </div>
@@ -818,11 +1430,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                   return (
                     <article
                       key={row.member.id}
-                      className={`rounded-[24px] border p-4 shadow-sm ${
-                        row.member.member_grade === '준회원'
-                          ? 'border-amber-200 bg-amber-50/70'
-                          : 'border-slate-200 bg-white'
-                      }`}
+                      className={`rounded-[24px] border p-4 shadow-sm ${duesMemberSurfaceClass(row.member.member_grade)}`}
                     >
                       <button
                         type="button"
@@ -865,45 +1473,56 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                         <div className="mt-4 grid grid-cols-2 gap-3">
                           {row.cells.map((cell) => {
                             const staff = row.member.member_grade === '간사';
-                            const exempt = selectedYear ? isFeeExempt(row.member, fiscalYears, data.payments, selectedYear.year, cell.month) : false;
-                            const cellActive = adminMode && !staff && !exempt;
+                            const autoExempt = selectedYear ? isFeeExempt(row.member, fiscalYears, data.payments, selectedYear.year, cell.month) : false;
+                            const manualExempt = Boolean(cell.payment?.manual_exempt);
+                            const exempt = autoExempt || manualExempt;
+                            const cellActive = adminMode && !staff;
                             const paid = Boolean(cell.payment?.paid);
 
                             return (
-                              <button
-                                key={`${row.member.id}-${cell.month}`}
-                                type="button"
-                                disabled={!cellActive}
-                                onClick={() => handleTogglePaid(row.member, cell.month)}
-                                className={`flex min-h-[136px] flex-col justify-between rounded-2xl border px-4 py-4 text-left transition ${buildPaymentButtonClass(
-                                  staff,
-                                  exempt,
-                                  paid,
-                                  cellActive
-                                )}`}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-2xl font-black tracking-tight">
-                                    {cell.month}월
-                                  </span>
+                              <div key={`${row.member.id}-${cell.month}`}>
+                                <button
+                                  type="button"
+                                  disabled={!cellActive}
+                                  onClick={() => openPaymentAction(row.member, cell.month)}
+                                  className={`flex min-h-[136px] w-full flex-col justify-between rounded-2xl border px-4 py-4 text-left transition ${buildPaymentButtonClass(
+                                    staff,
+                                    exempt,
+                                    paid,
+                                    cellActive
+                                  )}`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-2xl font-black tracking-tight">
+                                      {cell.month}월
+                                    </span>
 
-                                  <span className="text-sm font-bold">
-                                    {staff ? '면제' : exempt ? '면제' : paid ? '납부 완료' : '미납'}
-                                  </span>
-                                </div>
+                                    <span className="text-sm font-bold">
+                                      {staff ? '면제' : exempt ? '면제' : paid ? '납부 완료' : '미납'}
+                                    </span>
+                                  </div>
 
-                                <div className="mt-4">
-                                  {staff ? (
-                                    <p className="text-xs font-semibold text-slate-400">간사 회비 면제</p>
-                                  ) : exempt ? (
-                                    <p className="text-xs font-semibold text-slate-400">면제 적용 기간</p>
-                                  ) : paid ? (
-                                    <p className="text-xs font-semibold text-emerald-700">납부가 완료되었습니다</p>
-                                  ) : (
-                                    <p className="text-xs font-semibold">탭해서 등록</p>
-                                  )}
-                                </div>
-                              </button>
+                                  <div className="mt-4">
+                                    {staff ? (
+                                      <p className="text-xs font-semibold text-slate-400">간사 회비 면제</p>
+                                    ) : manualExempt ? (
+                                      <p className="text-xs font-semibold text-slate-400">{cell.payment?.exemption_reason ?? '수동 면제'}</p>
+                                    ) : autoExempt ? (
+                                      <p className="text-xs font-semibold text-slate-400">면제 적용 기간</p>
+                                    ) : paid ? (
+                                      <p className="text-xs font-semibold text-emerald-700">납부/면제 관리</p>
+                                    ) : (
+                                      <p className="text-xs font-semibold">납부/면제 관리</p>
+                                    )}
+
+                                    {cellActive ? (
+                                      <span className="mt-3 inline-flex rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white">
+                                        관리 열기
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -920,11 +1539,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                   return (
                     <article
                       key={row.member.id}
-                      className={`rounded-[24px] border p-4 shadow-sm ${
-                        row.member.member_grade === '준회원'
-                          ? 'border-amber-200 bg-amber-50/70'
-                          : 'border-slate-200 bg-white'
-                      }`}
+                      className={`rounded-[24px] border p-4 shadow-sm ${duesMemberSurfaceClass(row.member.member_grade)}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -952,7 +1567,9 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                       <div className="mt-4 grid grid-cols-2 gap-3">
                         {row.cells.map((cell) => {
                           const staff = row.member.member_grade === '간사';
-                          const exempt = selectedYear ? isFeeExempt(row.member, fiscalYears, data.payments, selectedYear.year, cell.month) : false;
+                          const autoExempt = selectedYear ? isFeeExempt(row.member, fiscalYears, data.payments, selectedYear.year, cell.month) : false;
+                          const manualExempt = Boolean(cell.payment?.manual_exempt);
+                          const exempt = autoExempt || manualExempt;
                           const paid = Boolean(cell.payment?.paid);
 
                           return (
@@ -978,7 +1595,9 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                               <div className="mt-4">
                                 {staff ? (
                                   <p className="text-xs font-semibold text-slate-400">간사 회비 면제</p>
-                                ) : exempt ? (
+                                ) : manualExempt ? (
+                                  <p className="text-xs font-semibold text-slate-400">{cell.payment?.exemption_reason ?? '수동 면제'}</p>
+                                ) : autoExempt ? (
                                   <p className="text-xs font-semibold text-slate-400">면제 적용 기간</p>
                                 ) : paid ? (
                                   <p className="text-xs font-semibold text-emerald-700">납부가 완료되었습니다</p>
@@ -1017,7 +1636,6 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                     <tr>
                       <th className="w-20 whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">순번</th>
                       <th className="w-36 whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">이름</th>
-                      <th className="w-36 whitespace-nowrap px-4 py-4 text-left font-semibold text-slate-500">등급</th>
                       {selectedYear.visible_months.map((month) => (
                         <th key={month} className="w-28 whitespace-nowrap px-3 py-4 text-center font-semibold text-slate-500">{month}월</th>
                       ))}
@@ -1028,17 +1646,15 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                     {rows.length ? rows.map((row) => {
                       const total = row.cells.reduce((sum, cell) => sum + paymentAmount(cell.payment), 0);
                       return (
-                        <tr key={row.member.id} className={row.member.member_grade === '준회원' ? 'bg-amber-50/80' : 'bg-white'}>
+                        <tr key={row.member.id} className={duesTableRowClass(row.member.member_grade)}>
                           <td className="px-4 py-5 font-semibold text-slate-500">{row.order}</td>
                           <td className="px-4 py-5 font-semibold text-slate-900 whitespace-nowrap">{row.member.full_name}</td>
-                          <td className="px-4 py-5">
-                            <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[row.member.member_grade].badge}`}>{row.member.member_grade}</span>
-                            <p className="mt-2 whitespace-nowrap text-xs text-slate-500">{row.member.member_grade === '간사' ? '회비 면제' : `월 ${formatCurrency(ROLE_META[row.member.member_grade].fee)}`}</p>
-                          </td>
                           {row.cells.map((cell) => {
                             const staff = row.member.member_grade === '간사';
-                            const exempt = isFeeExempt(row.member, fiscalYears, data.payments, selectedYear.year, cell.month);
-                            const cellActive = adminMode && !staff && !exempt;
+                            const autoExempt = isFeeExempt(row.member, fiscalYears, data.payments, selectedYear.year, cell.month);
+                            const manualExempt = Boolean(cell.payment?.manual_exempt);
+                            const exempt = autoExempt || manualExempt;
+                            const cellActive = adminMode && !staff;
                             const paid = Boolean(cell.payment?.paid);
                             const amount = cell.payment?.charged_amount ?? 0;
                             const appliedGrade = cell.payment?.applied_grade ?? row.member.member_grade;
@@ -1047,7 +1663,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                                 <button
                                   type="button"
                                   disabled={!cellActive}
-                                  onClick={() => handleTogglePaid(row.member, cell.month)}
+                                  onClick={() => openPaymentAction(row.member, cell.month)}
                                   className={`flex h-24 w-full flex-col items-center justify-center rounded-2xl border px-3 py-3 text-center transition ${buildPaymentButtonClass(staff, exempt, paid, cellActive)}`}
                                 >
                                   <span className="block text-xs font-bold">
@@ -1056,12 +1672,14 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                                   <span className="mt-1 block text-[11px] font-semibold whitespace-nowrap">
                                     {staff
                                       ? '간사 회비 면제'
-                                      : exempt
+                                      : manualExempt
+                                        ? cell.payment?.exemption_reason ?? '수동 면제'
+                                      : autoExempt
                                         ? '면제 적용 기간'
                                         : paid
-                                          ? '납부가 완료됨'
+                                          ? '관리 열기'
                                           : cellActive
-                                            ? '클릭하여 등록'
+                                            ? '관리 열기'
                                             : '납부 전'}
                                   </span>
                                 </button>
@@ -1073,7 +1691,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                       );
                     }) : (
                       <tr>
-                        <td colSpan={selectedYear.visible_months.length + 4} className="px-4 py-10 text-center text-sm text-slate-500">
+                        <td colSpan={selectedYear.visible_months.length + 3} className="px-4 py-10 text-center text-sm text-slate-500">
                           검색된 회원이 없습니다.
                         </td>
                       </tr>
@@ -1093,11 +1711,16 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {pendingProfiles.length ? pendingProfiles.map((member) => (
-                  <div key={member.id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
+                  <div key={member.id} className={`rounded-3xl border p-4 ${approvalCardClass(member.member_grade)}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-black text-slate-900">{member.full_name}</p>
-                        <p className="mt-1 text-xs text-slate-500">가입 요청 · {member.member_grade}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white">가입 요청</span>
+                          <span className={`rounded-full px-3 py-1 text-xs font-bold ${approvalGradeBadgeClass(member.member_grade)}`}>
+                            {member.member_grade}
+                          </span>
+                        </div>
                         {member.phone_number ? (
                           <p className="mt-3 text-sm text-slate-600">
                             <span className="font-semibold text-slate-700">전화번호:</span> {member.phone_number}
@@ -1176,10 +1799,95 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
 
         </section>
       </div>
+      {paymentActionTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-soft">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand-700">Payment Control</p>
+            <h3 className="mt-2 text-xl font-black text-slate-900">월 회비 관리</h3>
+            <p className="mt-2 text-sm text-slate-500">
+              {paymentActionTarget.member.full_name} · {paymentActionTarget.month}월 회비
+            </p>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={!paymentActionCanTogglePaid}
+                onClick={() => handlePaymentActionTogglePaid(paymentActionTarget.member, paymentActionTarget.month)}
+                className={`flex h-12 items-center justify-center rounded-2xl px-4 text-sm font-bold transition ${
+                  paymentActionCanTogglePaid
+                    ? 'bg-slate-900 text-white hover:bg-slate-800'
+                    : 'cursor-not-allowed bg-slate-100 text-slate-400'
+                }`}
+              >
+                {paymentActionPaid ? '납부 취소' : '납부 완료'}
+              </button>
+
+              <button
+                type="button"
+                disabled={!paymentActionCanManualExempt}
+                onClick={() =>
+                  handlePaymentActionManualExemption(
+                    paymentActionTarget.member,
+                    paymentActionTarget.month,
+                    !paymentActionManualExempt
+                  )
+                }
+                className={`flex h-12 items-center justify-center rounded-2xl px-4 text-sm font-bold transition ${
+                  paymentActionCanManualExempt
+                    ? 'border border-brand-200 bg-brand-50 text-brand-800 hover:border-brand-300'
+                    : 'cursor-not-allowed bg-slate-100 text-slate-400'
+                }`}
+              >
+                {paymentActionManualExempt ? '면제 해제' : '면제 처리'}
+              </button>
+            </div>
+
+            <label className="mt-4 block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">면제 사유</span>
+              <input
+                value={paymentExemptionReason}
+                onChange={(event) => setPaymentExemptionReason(event.target.value)}
+                disabled={paymentActionPaid || paymentActionAutoExempt}
+                type="text"
+                placeholder="예: 부상, 장기결석, 운영진 승인"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              />
+            </label>
+
+            <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-slate-500">현재 상태</span>
+                <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-slate-700">
+                  {paymentActionManualExempt
+                    ? '수동 면제'
+                    : paymentActionAutoExempt
+                      ? '자동 면제'
+                      : paymentActionPaid
+                        ? '납부 완료'
+                        : '미납'}
+                </span>
+              </div>
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                미납 월은 납부 완료 또는 면제 처리할 수 있고, 수동 면제 월은 다시 해제할 수 있습니다.
+              </p>
+            </div>
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => setPaymentActionTarget(null)}
+                className="flex h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {paymentGuide ? (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
         <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-soft">
-          <h3 className="text-xl font-black text-slate-900">회비 납부 안내</h3>
+          <h3 className="text-xl font-black text-slate-900">납부 안내</h3>
           <p className="mt-2 text-sm text-slate-500">{paymentGuide.memberName} · {paymentGuide.label}</p>
 
           <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">

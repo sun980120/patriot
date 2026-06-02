@@ -10,6 +10,8 @@ public record PaymentResponse(
     Integer month,
     boolean paid,
     Integer chargedAmount,
-    MemberGrade appliedGrade
+    MemberGrade appliedGrade,
+    boolean manualExempt,
+    String exemptionReason
 ) {
 }

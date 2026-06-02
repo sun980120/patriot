@@ -137,6 +137,141 @@ export async function togglePaymentAction(args: { fiscalYearId: string; memberId
   return { ok: true };
 }
 
+export async function updateManualPaymentExemptionAction(args: {
+  fiscalYearId: string;
+  memberId: string;
+  month: number;
+  exempt: boolean;
+  reason?: string;
+}): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/payments/exemption', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      fiscalYearId: args.fiscalYearId,
+      memberId: args.memberId,
+      month: args.month,
+      exempt: args.exempt,
+      reason: args.reason,
+    }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '수동 면제 설정 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function getVapidPublicKeyAction(): Promise<ActionResult & { publicKey?: string; configured?: boolean }> {
+  const result = await serverApiFetch<{ configured: boolean; publicKey: string | null }>('/api/notifications/vapid-public-key');
+
+  if (!result.ok) {
+    return { ok: false, configured: false, message: result.message ?? '알림 설정을 확인할 수 없습니다.' };
+  }
+
+  return {
+    ok: Boolean(result.data?.configured && result.data.publicKey),
+    configured: Boolean(result.data?.configured),
+    publicKey: result.data?.publicKey ?? undefined,
+    message: result.data?.configured ? undefined : 'VAPID 키가 설정되지 않았습니다.',
+  };
+}
+
+export async function savePushSubscriptionAction(input: {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  userAgent?: string;
+}): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/notifications/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '알림 구독 저장에 실패했습니다.' };
+  }
+
+  return { ok: true, message: '알림 구독이 저장되었습니다.' };
+}
+
+export async function sendTestPushNotificationAction(): Promise<ActionResult> {
+  const result = await serverApiFetch<{ sentCount: number; failedCount: number; message: string }>('/api/notifications/test', {
+    method: 'POST',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '테스트 알림 발송에 실패했습니다.' };
+  }
+
+  return {
+    ok: (result.data?.sentCount ?? 0) > 0,
+    message: result.data?.message ?? '테스트 알림을 발송했습니다.',
+  };
+}
+
+export async function sendMonthlyDuesPushReminderAction(): Promise<ActionResult> {
+  const result = await serverApiFetch<{ targetCount: number; sentCount: number; failedCount: number; message: string }>('/api/notifications/monthly-dues/remind', {
+    method: 'POST',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '월회비 푸시 알림 발송에 실패했습니다.' };
+  }
+
+  const targetCount = result.data?.targetCount ?? 0;
+  const sentCount = result.data?.sentCount ?? 0;
+  const failedCount = result.data?.failedCount ?? 0;
+
+  if (targetCount > 0 && sentCount === 0 && failedCount === 0) {
+    return {
+      ok: true,
+      message: `앱 내부 알림 ${targetCount}건을 저장했습니다. 푸시 구독된 기기는 아직 없습니다.`,
+    };
+  }
+
+  return {
+    ok: true,
+    message: `${result.data?.message ?? '월회비 알림을 처리했습니다.'} 앱 알림 ${targetCount}건, 푸시 성공 ${sentCount}건, 실패 ${failedCount}건`,
+  };
+}
+
+export async function getNotificationUnreadCountAction(): Promise<ActionResult & { unreadCount?: number }> {
+  const result = await serverApiFetch<{ unreadCount: number }>('/api/app-notifications/unread-count');
+
+  if (!result.ok) {
+    return { ok: false, unreadCount: 0, message: result.message ?? '알림 개수를 확인할 수 없습니다.' };
+  }
+
+  return { ok: true, unreadCount: result.data?.unreadCount ?? 0 };
+}
+
+export async function markNotificationReadAction(notificationId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/app-notifications/${notificationId}/read`, {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '알림 읽음 처리에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
+export async function markAllNotificationsReadAction(): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/app-notifications/read-all', {
+    method: 'PATCH',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '알림 읽음 처리에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
+
 export async function approveMemberAction(memberId: string): Promise<ActionResult> {
   const result = await serverApiFetch(`/api/admin/members/${memberId}/approve`, {
     method: 'PATCH',
@@ -386,4 +521,58 @@ export async function deleteAdditionalChargeGroupAction(chargeGroupId: string): 
 
   refreshHome();
   return { ok: true };
+}
+
+export async function sendAdditionalChargeReminderAction(chargeGroupId: string): Promise<ActionResult> {
+  const result = await serverApiFetch<{ targetCount: number; sentCount: number; failedCount: number; message: string }>(
+    `/api/additional-charges/${chargeGroupId}/remind`,
+    { method: 'POST' }
+  );
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '추가비용 푸시 알림 발송에 실패했습니다.' };
+  }
+
+  const targetCount = result.data?.targetCount ?? 0;
+  const sentCount = result.data?.sentCount ?? 0;
+  const failedCount = result.data?.failedCount ?? 0;
+
+  if (targetCount > 0 && sentCount === 0 && failedCount === 0) {
+    return {
+      ok: true,
+      message: `앱 내부 알림 ${targetCount}건을 저장했습니다. 푸시 구독된 기기는 아직 없습니다.`,
+    };
+  }
+
+  return {
+    ok: true,
+    message: `${result.data?.message ?? '추가비용 알림을 처리했습니다.'} 앱 알림 ${targetCount}건, 푸시 성공 ${sentCount}건, 실패 ${failedCount}건`,
+  };
+}
+
+export async function sendAdditionalChargeFiscalYearReminderAction(fiscalYearId: string): Promise<ActionResult> {
+  const result = await serverApiFetch<{ targetCount: number; sentCount: number; failedCount: number; message: string }>(
+    `/api/additional-charges/remind?fiscalYearId=${encodeURIComponent(fiscalYearId)}`,
+    { method: 'POST' }
+  );
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '추가비용 푸시 알림 발송에 실패했습니다.' };
+  }
+
+  const targetCount = result.data?.targetCount ?? 0;
+  const sentCount = result.data?.sentCount ?? 0;
+  const failedCount = result.data?.failedCount ?? 0;
+
+  if (targetCount > 0 && sentCount === 0 && failedCount === 0) {
+    return {
+      ok: true,
+      message: `앱 내부 알림 ${targetCount}건을 저장했습니다. 푸시 구독된 기기는 아직 없습니다.`,
+    };
+  }
+
+  return {
+    ok: true,
+    message: `${result.data?.message ?? '추가비용 알림을 처리했습니다.'} 앱 알림 ${targetCount}건, 푸시 성공 ${sentCount}건, 실패 ${failedCount}건`,
+  };
 }

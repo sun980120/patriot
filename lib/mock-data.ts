@@ -40,16 +40,16 @@ export const mockBundle: DashboardBundle = {
     { id: 'pending-2', full_name: '최신화', email: 'pending2@patriot.club', username: 'choish', phone_number: '010-2222-9999', address: '경기도 하남시', base_address: '경기도 하남시', detail_address: null, birth_date: '2010-04-03', app_role: 'member', member_grade: '준회원', grade_source: 'auto', approval_status: 'pending', is_active: true, fee_exemption_months: 0, fee_exemption_start_date: null, joined_at: '2026-05-07T09:00:00' },
   ],
   payments: [
-    { id: 'p1', fiscal_year_id: fiscal2026, member_id: 'member-1', month: 5, paid: true, charged_amount: 20000, applied_grade: '정회원' },
-    { id: 'p2', fiscal_year_id: fiscal2026, member_id: 'member-2', month: 5, paid: true, charged_amount: 20000, applied_grade: '정회원' },
-    { id: 'p3', fiscal_year_id: fiscal2026, member_id: 'member-2', month: 6, paid: true, charged_amount: 20000, applied_grade: '정회원' },
-    { id: 'p4', fiscal_year_id: fiscal2026, member_id: 'member-2', month: 7, paid: true, charged_amount: 20000, applied_grade: '정회원' },
-    { id: 'p5', fiscal_year_id: fiscal2026, member_id: 'member-3', month: 5, paid: true, charged_amount: 10000, applied_grade: '준회원' },
-    { id: 'p6', fiscal_year_id: fiscal2027, member_id: 'member-1', month: 1, paid: true, charged_amount: 20000, applied_grade: '정회원' },
-    { id: 'p7', fiscal_year_id: fiscal2027, member_id: 'member-1', month: 2, paid: true, charged_amount: 20000, applied_grade: '정회원' },
-    { id: 'p8', fiscal_year_id: fiscal2027, member_id: 'member-3', month: 1, paid: true, charged_amount: 10000, applied_grade: '준회원' },
-    { id: 'p9', fiscal_year_id: fiscal2027, member_id: 'member-3', month: 2, paid: true, charged_amount: 10000, applied_grade: '준회원' },
-    { id: 'p10', fiscal_year_id: fiscal2027, member_id: 'member-3', month: 3, paid: true, charged_amount: 10000, applied_grade: '준회원' }
+    { id: 'p1', fiscal_year_id: fiscal2026, member_id: 'member-1', month: 5, paid: true, charged_amount: 20000, applied_grade: '정회원', manual_exempt: false, exemption_reason: null },
+    { id: 'p2', fiscal_year_id: fiscal2026, member_id: 'member-2', month: 5, paid: true, charged_amount: 20000, applied_grade: '정회원', manual_exempt: false, exemption_reason: null },
+    { id: 'p3', fiscal_year_id: fiscal2026, member_id: 'member-2', month: 6, paid: true, charged_amount: 20000, applied_grade: '정회원', manual_exempt: false, exemption_reason: null },
+    { id: 'p4', fiscal_year_id: fiscal2026, member_id: 'member-2', month: 7, paid: true, charged_amount: 20000, applied_grade: '정회원', manual_exempt: false, exemption_reason: null },
+    { id: 'p5', fiscal_year_id: fiscal2026, member_id: 'member-3', month: 5, paid: true, charged_amount: 10000, applied_grade: '준회원', manual_exempt: false, exemption_reason: null },
+    { id: 'p6', fiscal_year_id: fiscal2027, member_id: 'member-1', month: 1, paid: true, charged_amount: 20000, applied_grade: '정회원', manual_exempt: false, exemption_reason: null },
+    { id: 'p7', fiscal_year_id: fiscal2027, member_id: 'member-1', month: 2, paid: true, charged_amount: 20000, applied_grade: '정회원', manual_exempt: false, exemption_reason: null },
+    { id: 'p8', fiscal_year_id: fiscal2027, member_id: 'member-3', month: 1, paid: true, charged_amount: 10000, applied_grade: '준회원', manual_exempt: false, exemption_reason: null },
+    { id: 'p9', fiscal_year_id: fiscal2027, member_id: 'member-3', month: 2, paid: true, charged_amount: 10000, applied_grade: '준회원', manual_exempt: false, exemption_reason: null },
+    { id: 'p10', fiscal_year_id: fiscal2027, member_id: 'member-3', month: 3, paid: true, charged_amount: 10000, applied_grade: '준회원', manual_exempt: false, exemption_reason: null }
   ],
   incomes: [
     { id: 'i1', fiscal_year_id: fiscal2026, charge_group_id: null, label: '세일스포츠', amount: 200000, memo: null },

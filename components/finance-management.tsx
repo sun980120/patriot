@@ -10,6 +10,7 @@ import {
   deleteExpenseEntryAction,
   deleteIncomeEntryAction,
   reopenAdditionalChargeSettlementAction,
+  sendAdditionalChargeReminderAction,
   settleAdditionalChargeSurplusAction,
   toggleAdditionalChargePaidAction,
 } from '@/app/actions';
@@ -533,6 +534,36 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     setMessage(`${group.title} 이벤트를 다시 수정할 수 있습니다.`);
   };
 
+  const sendChargeReminder = (group: ChargeGroup) => {
+    const unpaidCount = group.participant_charges.filter((charge) => charge.status === 'UNPAID').length;
+    if (!unpaidCount) {
+      setToastTone('info');
+      setMessage('현재 미납 참가자가 없습니다.');
+      return;
+    }
+
+    setToastTone('info');
+    setMessage(`${group.title} 미납자 ${unpaidCount}명에게 알림을 발송 중입니다.`);
+
+    if (source === 'spring') {
+      startTransition(async () => {
+        const result = await sendAdditionalChargeReminderAction(group.id);
+        if (!result.ok) {
+          setToastTone('error');
+          setMessage(result.message ?? '추가비용 알림 발송에 실패했습니다.');
+          return;
+        }
+        setToastTone('success');
+        setMessage(result.message ?? '추가비용 알림을 발송했습니다.');
+        router.refresh();
+      });
+      return;
+    }
+
+    setToastTone('success');
+    setMessage(`${group.title} 미납자 ${unpaidCount}명에게 알림을 보냈습니다.`);
+  };
+
   return (
     <>
       <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
@@ -586,7 +617,15 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           <select value={chargeForm.category} onChange={(event) => setChargeForm((current) => ({ ...current, category: event.target.value as AdditionalChargeCategory }))} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none">
             {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          <input value={chargeForm.eventDate} onChange={(event) => setChargeForm((current) => ({ ...current, eventDate: event.target.value }))} type="date" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          <label className="block rounded-2xl border border-slate-200 bg-white px-4 py-2.5 focus-within:border-brand-400">
+            <span className="block text-xs font-semibold text-slate-400">마감 날짜</span>
+            <input
+              value={chargeForm.eventDate}
+              onChange={(event) => setChargeForm((current) => ({ ...current, eventDate: event.target.value }))}
+              type="date"
+              className="mt-1 w-full bg-transparent text-sm text-slate-900 focus:outline-none"
+            />
+          </label>
           <input value={chargeForm.supportAmount} onChange={(event) => setChargeForm((current) => ({ ...current, supportAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="회비 공용지원 금액 (없으면 비워두기)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
           <input value={chargeForm.totalExpenseAmount} onChange={(event) => setChargeForm((current) => ({ ...current, totalExpenseAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="총 지출 금액" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
           <select
@@ -691,7 +730,9 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">{CATEGORY_LABELS[group.category]}</p>
                     <h4 className="mt-1 text-lg font-black text-slate-900">{group.title}</h4>
-                    <p className="mt-2 text-sm text-slate-500">{group.event_date ? `${group.event_date} · ` : ''}공용 지원 {formatCurrency(group.support_amount)}</p>
+                    <p className="mt-2 text-sm text-slate-500">
+                      마감 {group.event_date ?? '미정'} · 공용 지원 {formatCurrency(group.support_amount)}
+                    </p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
                       <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">참가 {group.participant_charges.length}명</span>
                       <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">납부 {paidCount}명</span>
@@ -739,6 +780,18 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                             정산 수정
                           </button>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={() => sendChargeReminder(group)}
+                          disabled={unpaidCount === 0 || isPending}
+                          className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                            unpaidCount === 0 || isPending
+                              ? 'cursor-not-allowed bg-slate-200 text-slate-500'
+                              : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          푸시 알림 발송
+                        </button>
                         <button
                           type="button"
                           onClick={() => deleteChargeGroup(group.id)}

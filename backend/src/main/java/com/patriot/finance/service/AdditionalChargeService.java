@@ -35,6 +35,7 @@ public class AdditionalChargeService {
     private final MemberChargeRepository memberChargeRepository;
     private final ExpenseEntryRepository expenseEntryRepository;
     private final IncomeEntryRepository incomeEntryRepository;
+    private final PushNotificationService pushNotificationService;
 
     public List<ChargeGroupResponse> findChargeGroups(UUID fiscalYearId) {
         return chargeGroupRepository.findByFiscalYearIdOrderByCreatedAtDesc(fiscalYearId).stream()
@@ -77,7 +78,8 @@ public class AdditionalChargeService {
                 .build())
             .toList();
 
-        memberChargeRepository.saveAll(charges);
+        List<MemberCharge> savedCharges = memberChargeRepository.saveAll(charges);
+        pushNotificationService.sendAdditionalChargeCreated(chargeGroup, savedCharges);
         return toResponse(chargeGroup);
     }
 

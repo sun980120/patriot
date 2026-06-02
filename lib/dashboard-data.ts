@@ -61,6 +61,8 @@ type DashboardApiResponse = {
     paid: boolean;
     chargedAmount: number;
     appliedGrade: Profile['member_grade'];
+    manualExempt: boolean;
+    exemptionReason: string | null;
   }>;
   incomes: Array<{
     id: string;
@@ -158,6 +160,8 @@ function toPayment(row: DashboardApiResponse['payments'][number]): PaymentRecord
     paid: row.paid,
     charged_amount: row.chargedAmount,
     applied_grade: row.appliedGrade,
+    manual_exempt: row.manualExempt ?? false,
+    exemption_reason: row.exemptionReason ?? null,
   };
 }
 
