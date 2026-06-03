@@ -9,10 +9,12 @@ import com.patriot.finance.dto.AuthResponse;
 import com.patriot.finance.dto.MessageResponse;
 import com.patriot.finance.dto.LoginRequest;
 import com.patriot.finance.dto.MemberSummaryResponse;
+import com.patriot.finance.dto.RefreshTokenRequest;
 import com.patriot.finance.dto.SignupRequest;
 import com.patriot.finance.dto.UpdateProfileRequest;
 import com.patriot.finance.dto.UsernameAvailabilityResponse;
 import com.patriot.finance.repository.MemberRepository;
+import com.patriot.finance.domain.entity.RefreshToken;
 import com.patriot.finance.security.CustomUserPrincipal;
 import com.patriot.finance.security.JwtTokenProvider;
 import java.time.LocalDate;
@@ -21,7 +23,9 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -33,10 +37,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberService {
 
     public static final String DEFAULT_RESET_PASSWORD = "0000";
+    private static final int MAX_FAILED_LOGIN_ATTEMPTS = 5;
+
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider jwtTokenProvider;
+    private final RefreshTokenService refreshTokenService;
 
     @Transactional
     public MemberSummaryResponse signup(SignupRequest request) {
@@ -64,25 +71,72 @@ public class MemberService {
         return toResponse(memberRepository.save(member));
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(
-            new UsernamePasswordAuthenticationToken(request.username(), request.password())
-        );
-
         Member member = memberRepository.findByUsername(request.username())
-            .orElseThrow(() -> new IllegalArgumentException("회원 정보를 찾을 수 없습니다."));
+            .orElseThrow(() -> new BadCredentialsException("아이디 또는 비밀번호가 올바르지 않습니다."));
+
+        validateLoginEnabled(member);
+
+        try {
+            authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.username(), request.password())
+            );
+        } catch (BadCredentialsException exception) {
+            member.recordLoginFailure(MAX_FAILED_LOGIN_ATTEMPTS);
+            if (member.isAccountLocked()) {
+                throw new LockedException("비밀번호 5회 오류로 계정이 잠겼습니다. 관리자에게 문의하세요.");
+            }
+            throw exception;
+        }
+
+        member.resetLoginFailures();
+
+        CustomUserPrincipal principal = new CustomUserPrincipal(member);
+        long accessExpiresIn = jwtTokenProvider.getExpirationSeconds();
+        long refreshExpiresIn = request.rememberMe() ? jwtTokenProvider.getRememberMeExpirationSeconds() : 0L;
+        String refreshToken = request.rememberMe()
+            ? refreshTokenService.issue(member, refreshExpiresIn)
+            : null;
+
+        return new AuthResponse(
+            jwtTokenProvider.generateToken(principal),
+            "Bearer",
+            accessExpiresIn,
+            refreshToken,
+            refreshExpiresIn,
+            toResponse(member)
+        );
+    }
+
+    @Transactional
+    public AuthResponse refresh(RefreshTokenRequest request) {
+        RefreshToken refreshToken = refreshTokenService.consume(request.refreshToken());
+        Member member = refreshToken.getMember();
+        validateLoginEnabled(member);
+
+        CustomUserPrincipal principal = new CustomUserPrincipal(member);
+        long accessExpiresIn = jwtTokenProvider.getExpirationSeconds();
+        long refreshExpiresIn = jwtTokenProvider.getRememberMeExpirationSeconds();
+
+        return new AuthResponse(
+            jwtTokenProvider.generateToken(principal),
+            "Bearer",
+            accessExpiresIn,
+            refreshTokenService.issue(member, refreshExpiresIn),
+            refreshExpiresIn,
+            toResponse(member)
+        );
+    }
+
+    private void validateLoginEnabled(Member member) {
+        if (member.isAccountLocked()) {
+            throw new LockedException("비밀번호 5회 오류로 계정이 잠겼습니다. 관리자에게 문의하세요.");
+        }
 
         if (!member.isActive() || member.getApprovalStatus() != ApprovalStatus.APPROVED) {
             throw new DisabledException("승인되지 않았거나 비활성화된 회원입니다.");
         }
-
-        CustomUserPrincipal principal = new CustomUserPrincipal(member);
-        return new AuthResponse(
-            jwtTokenProvider.generateToken(principal),
-            "Bearer",
-            jwtTokenProvider.getExpirationSeconds(),
-            toResponse(member)
-        );
     }
 
     public MemberSummaryResponse me(UUID memberId) {
@@ -136,6 +190,8 @@ public class MemberService {
         }
 
         member.changePassword(passwordEncoder.encode(newPassword));
+        member.resetLoginFailures();
+        refreshTokenService.revokeActiveTokens(member);
         return new MessageResponse("비밀번호가 변경되었습니다.");
     }
 
@@ -203,7 +259,9 @@ public class MemberService {
     public MessageResponse resetPassword(UUID memberId) {
         Member member = getMember(memberId);
         member.changePassword(passwordEncoder.encode(DEFAULT_RESET_PASSWORD));
-        return new MessageResponse("비밀번호가 기본값 0000으로 초기화되었습니다.");
+        member.resetLoginFailures();
+        refreshTokenService.revokeActiveTokens(member);
+        return new MessageResponse("비밀번호가 기본값 0000으로 초기화되고 계정 잠금이 해제되었습니다.");
     }
 
     @Transactional

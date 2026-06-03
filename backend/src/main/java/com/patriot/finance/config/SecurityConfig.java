@@ -41,7 +41,7 @@ public class SecurityConfig {
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health", "/api/auth/signup", "/api/auth/login").permitAll()
+                .requestMatchers("/actuator/health", "/api/auth/signup", "/api/auth/login", "/api/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/years/**", "/api/finance/**", "/api/payments/**", "/api/additional-charges/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/years/**", "/api/finance/**", "/api/additional-charges/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                 .requestMatchers(HttpMethod.PATCH, "/api/payments/**", "/api/additional-charges/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
