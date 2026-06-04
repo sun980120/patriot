@@ -1,6 +1,7 @@
 package com.patriot.finance.repository;
 
 import com.patriot.finance.domain.entity.AppNotification;
+import com.patriot.finance.domain.enums.NotificationType;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -12,6 +13,8 @@ public interface AppNotificationRepository extends JpaRepository<AppNotification
     long countByMemberIdAndReadAtIsNull(UUID memberId);
 
     List<AppNotification> findByMemberIdAndReadAtIsNull(UUID memberId);
+
+    boolean existsByMemberIdAndTypeAndTitleAndMessageAndReadAtIsNull(UUID memberId, NotificationType type, String title, String message);
 
     long deleteByCreatedAtBefore(LocalDateTime createdAt);
 }

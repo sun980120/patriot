@@ -51,6 +51,15 @@ public class AppNotificationService {
     }
 
     @Transactional
+    public boolean createUnreadIfAbsent(UUID memberId, NotificationType type, String title, String message, String linkUrl) {
+        if (notificationRepository.existsByMemberIdAndTypeAndTitleAndMessageAndReadAtIsNull(memberId, type, title, message)) {
+            return false;
+        }
+        create(memberId, type, title, message, linkUrl);
+        return true;
+    }
+
+    @Transactional
     public void markRead(UUID memberId, UUID notificationId) {
         AppNotification notification = notificationRepository.findById(notificationId)
             .orElseThrow(() -> new IllegalArgumentException("알림을 찾을 수 없습니다."));
