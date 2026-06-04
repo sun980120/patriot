@@ -114,28 +114,34 @@ public class PushNotificationService {
             return new PushSendResponse(0, 0, 0, "오늘 알림 대상 회비 월이 없습니다.");
         }
 
-        List<Member> targetMembers = memberRepository.findAll().stream()
+        List<MonthlyDueTarget> targets = memberRepository.findAll().stream()
             .filter(Member::isActive)
             .filter(member -> member.getApprovalStatus() == ApprovalStatus.APPROVED)
             .filter(member -> member.getMemberGrade() != MemberGrade.간사)
-            .filter(member -> reminderPeriods.stream().anyMatch(period -> isMonthlyDueUnpaid(period.fiscalYear(), member, period.month())))
+            .map(member -> new MonthlyDueTarget(
+                member,
+                reminderPeriods.stream()
+                    .filter(period -> isMonthlyDueUnpaid(period.fiscalYear(), member, period.month()))
+                    .toList()
+            ))
+            .filter(target -> !target.periods().isEmpty())
             .toList();
 
-        if (targetMembers.isEmpty()) {
+        if (targets.isEmpty()) {
             return new PushSendResponse(0, 0, 0, "월회비 알림 대상자가 없습니다.");
         }
 
-        targetMembers.forEach(member -> appNotificationService.create(
-            member.getId(),
+        targets.forEach(target -> appNotificationService.createUnreadIfAbsent(
+            target.member().getId(),
             NotificationType.MONTHLY_DUES,
             "월회비 납부 안내",
-            "납부되지 않은 월회비가 있습니다. 납부 현황을 확인해 주세요.",
+            monthlyDueMessage(target.periods()),
             "/dashboard"
         ));
 
-        List<UUID> targetMemberIds = targetMembers.stream().map(Member::getId).toList();
+        List<UUID> targetMemberIds = targets.stream().map(target -> target.member().getId()).toList();
         List<PushSubscription> subscriptions = pushSubscriptionRepository.findByMemberIdInAndActiveTrue(targetMemberIds);
-        return sendToSubscriptions(subscriptions, targetMembers.size(), "월회비 앱 알림을 저장했습니다.");
+        return sendToSubscriptions(subscriptions, targets.size(), "월회비 앱 알림을 저장했습니다.");
     }
 
     @Transactional
@@ -288,7 +294,18 @@ public class PushNotificationService {
         return payment == null || (!payment.isPaid() && !payment.isManualExempt());
     }
 
+    private String monthlyDueMessage(List<MonthlyDuePeriod> periods) {
+        String periodLabel = periods.stream()
+            .map(period -> "%d년 %d월".formatted(period.fiscalYear().getYear(), period.month()))
+            .reduce((left, right) -> left + ", " + right)
+            .orElse("월회비");
+        return "%s 회비가 아직 미납 상태입니다. 납부 현황을 확인해 주세요.".formatted(periodLabel);
+    }
+
     private record MonthlyDuePeriod(FiscalYear fiscalYear, int month) {
+    }
+
+    private record MonthlyDueTarget(Member member, List<MonthlyDuePeriod> periods) {
     }
 
     private String additionalChargeMessage(ChargeGroup group, MemberCharge charge, String prefix) {

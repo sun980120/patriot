@@ -64,18 +64,21 @@ export function AuthCard() {
             placeholder="비밀번호"
             className="w-full rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none"
           />
-          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white/85">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={rememberMe}
+            onClick={() => setRememberMe((value) => !value)}
+            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-bold text-white/85 transition hover:bg-white/10"
+          >
             <span>
               자동 로그인
               <span className="ml-2 text-xs font-semibold text-white/45">30일 유지</span>
             </span>
-            <input
-              checked={rememberMe}
-              onChange={(event) => setRememberMe(event.target.checked)}
-              type="checkbox"
-              className="h-5 w-5 accent-brand-400"
-            />
-          </label>
+            <span className={`flex h-7 w-12 items-center rounded-full p-1 transition ${rememberMe ? 'bg-brand-400' : 'bg-white/20'}`}>
+              <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition ${rememberMe ? 'translate-x-5' : 'translate-x-0'}`} />
+            </span>
+          </button>
           <button
             type="submit"
             disabled={pending}
