@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -36,6 +37,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(DisabledException.class)
     public ResponseEntity<ApiErrorResponse> handleDisabled(DisabledException exception, HttpServletRequest request) {
         return build(HttpStatus.FORBIDDEN, "승인되지 않았거나 비활성화된 회원입니다.", request);
+    }
+
+    @ExceptionHandler(LockedException.class)
+    public ResponseEntity<ApiErrorResponse> handleLocked(LockedException exception, HttpServletRequest request) {
+        return build(HttpStatus.LOCKED, exception.getMessage(), request);
     }
 
     @ExceptionHandler(Exception.class)

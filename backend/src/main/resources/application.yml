@@ -23,6 +23,7 @@ app:
   jwt:
     secret: ${PATRIOT_JWT_SECRET:VGhpc0lzQVBhdHJpb3RCYWNrZW5kSldUU2VjcmV0S2V5Rm9yRGV2ZWxvcG1lbnRPbmx5MTIzNDU2}
     expiration-seconds: ${PATRIOT_JWT_EXPIRATION_SECONDS:43200}
+    remember-me-expiration-seconds: ${PATRIOT_JWT_REMEMBER_ME_EXPIRATION_SECONDS:2592000}
   cors:
     allowed-origins: ${PATRIOT_ALLOWED_ORIGINS:https://patriot-phi.vercel.app}
     # allowed-origins: ${PATRIOT_ALLOWED_ORIGINS:http://192.168.54.65:3000}

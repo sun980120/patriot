@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { publicApiFetch, serverApiFetch } from '@/lib/backend-api';
-import { ACCESS_TOKEN_COOKIE } from '@/lib/session';
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from '@/lib/session';
 
 type ActionResult = {
   ok: boolean;
@@ -20,14 +20,16 @@ function refreshHome() {
   revalidatePath('/admin/finance');
 }
 
-export async function loginAction(username: string, password: string): Promise<ActionResult> {
+export async function loginAction(username: string, password: string, rememberMe = false): Promise<ActionResult> {
   const result = await publicApiFetch<{
     accessToken: string;
     tokenType: string;
     expiresIn: number;
+    refreshToken?: string | null;
+    refreshExpiresIn?: number;
   }>('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, rememberMe }),
   });
 
   if (!result.ok || !result.data) {
@@ -42,6 +44,18 @@ export async function loginAction(username: string, password: string): Promise<A
     path: '/',
     maxAge: result.data.expiresIn,
   });
+
+  if (rememberMe && result.data.refreshToken && result.data.refreshExpiresIn) {
+    cookieStore.set(REFRESH_TOKEN_COOKIE, result.data.refreshToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: result.data.refreshExpiresIn,
+    });
+  } else {
+    cookieStore.delete(REFRESH_TOKEN_COOKIE);
+  }
 
   refreshHome();
   return { ok: true };
@@ -102,6 +116,7 @@ export async function updateProfileAction(input: {
 export async function logoutAction(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(ACCESS_TOKEN_COOKIE);
+  cookieStore.delete(REFRESH_TOKEN_COOKIE);
   refreshHome();
 }
 

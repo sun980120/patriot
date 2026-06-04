@@ -73,6 +73,12 @@ public class Member extends BaseEntity {
 
     private LocalDate feeExemptionStartDate;
 
+    private Integer failedLoginAttempts;
+
+    private Boolean accountLocked;
+
+    private LocalDateTime accountLockedAt;
+
     @Builder
     private Member(
         String email,
@@ -90,7 +96,10 @@ public class Member extends BaseEntity {
         boolean active,
         LocalDateTime joinedAt,
         Integer feeExemptionMonths,
-        LocalDate feeExemptionStartDate
+        LocalDate feeExemptionStartDate,
+        Integer failedLoginAttempts,
+        Boolean accountLocked,
+        LocalDateTime accountLockedAt
     ) {
         this.email = email;
         this.username = username;
@@ -108,6 +117,9 @@ public class Member extends BaseEntity {
         this.joinedAt = joinedAt != null ? joinedAt : LocalDateTime.now();
         this.feeExemptionMonths = feeExemptionMonths == null ? 0 : feeExemptionMonths;
         this.feeExemptionStartDate = feeExemptionStartDate;
+        this.failedLoginAttempts = failedLoginAttempts == null ? 0 : failedLoginAttempts;
+        this.accountLocked = accountLocked == null ? false : accountLocked;
+        this.accountLockedAt = accountLockedAt;
     }
 
     public void approve() {
@@ -156,6 +168,30 @@ public class Member extends BaseEntity {
 
     public void changePassword(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public boolean isAccountLocked() {
+        return Boolean.TRUE.equals(accountLocked);
+    }
+
+    public int getFailedLoginAttempts() {
+        return failedLoginAttempts == null ? 0 : failedLoginAttempts;
+    }
+
+    public void recordLoginFailure(int maxAttempts) {
+        int nextAttempts = getFailedLoginAttempts() + 1;
+        this.failedLoginAttempts = nextAttempts;
+
+        if (nextAttempts >= maxAttempts) {
+            this.accountLocked = true;
+            this.accountLockedAt = LocalDateTime.now();
+        }
+    }
+
+    public void resetLoginFailures() {
+        this.failedLoginAttempts = 0;
+        this.accountLocked = false;
+        this.accountLockedAt = null;
     }
 
     public void updateFeeExemption(Integer months) {

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { AutoLoginRedirect } from '@/components/auto-login-redirect';
 import { AuthCard } from '@/components/auth-card';
 import { SiteNav } from '@/components/site-nav';
 import { loadDashboardData } from '@/lib/dashboard-data';
@@ -13,6 +14,7 @@ export default async function LoginPage() {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <SiteNav profile={null} />
+      <AutoLoginRedirect />
       <AuthCard />
     </main>
   );

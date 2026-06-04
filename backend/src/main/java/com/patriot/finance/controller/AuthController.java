@@ -5,6 +5,7 @@ import com.patriot.finance.dto.ChangePasswordRequest;
 import com.patriot.finance.dto.MessageResponse;
 import com.patriot.finance.dto.LoginRequest;
 import com.patriot.finance.dto.MemberSummaryResponse;
+import com.patriot.finance.dto.RefreshTokenRequest;
 import com.patriot.finance.dto.SignupRequest;
 import com.patriot.finance.dto.UpdateProfileRequest;
 import com.patriot.finance.dto.UsernameAvailabilityResponse;
@@ -38,6 +39,11 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
         return memberService.login(request);
+    }
+
+    @PostMapping("/refresh")
+    public AuthResponse refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return memberService.refresh(request);
     }
 
     @GetMapping("/me")
