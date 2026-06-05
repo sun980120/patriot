@@ -5,6 +5,7 @@ import com.patriot.finance.dto.CreateChargeGroupRequest;
 import com.patriot.finance.dto.MemberChargeResponse;
 import com.patriot.finance.dto.MemberChargeToggleRequest;
 import com.patriot.finance.dto.PushSendResponse;
+import com.patriot.finance.dto.UpdateMemberChargeAmountRequest;
 import com.patriot.finance.service.AdditionalChargeService;
 import com.patriot.finance.service.PushNotificationService;
 import jakarta.validation.Valid;
@@ -45,6 +46,11 @@ public class AdditionalChargeController {
     @PatchMapping("/{chargeId}/toggle")
     public MemberChargeResponse toggleChargePaid(@PathVariable UUID chargeId, @Valid @RequestBody MemberChargeToggleRequest request) {
         return additionalChargeService.toggleChargePaid(chargeId, request.paid());
+    }
+
+    @PatchMapping("/{chargeId}/amount")
+    public MemberChargeResponse updateChargeAmount(@PathVariable UUID chargeId, @Valid @RequestBody UpdateMemberChargeAmountRequest request) {
+        return additionalChargeService.updateChargeAmount(chargeId, request.amount(), request.adjustmentReason());
     }
 
     @PatchMapping("/{chargeGroupId}/settle")

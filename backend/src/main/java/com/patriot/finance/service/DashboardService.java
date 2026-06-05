@@ -168,6 +168,8 @@ public class DashboardService {
                 charge.getMember().getFullName(),
                 charge.getMember().getUsername(),
                 charge.getAmount(),
+                charge.getBaseAmountOrAmount(),
+                charge.getAdjustmentReason(),
                 charge.getStatus(),
                 charge.getPaidAt(),
                 charge.getMemo()

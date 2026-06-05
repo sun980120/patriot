@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { markAllNotificationsReadAction } from '@/app/actions';
+import { deleteAllNotificationsAction, markAllNotificationsReadAction } from '@/app/actions';
 import { NotificationsList } from '@/components/notifications-list';
 import { SiteNav } from '@/components/site-nav';
 import { loadDashboardData } from '@/lib/dashboard-data';
@@ -26,18 +26,32 @@ export default async function NotificationsPage() {
               회비, 추가 비용, 관리자 안내를 한 곳에서 확인합니다.
             </p>
           </div>
-          <form action={async () => {
-            'use server';
-            await markAllNotificationsReadAction();
-          }}>
-            <button
-              type="submit"
-              disabled={notificationData.unreadCount === 0}
-              className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-            >
-              모두 읽음 처리
-            </button>
-          </form>
+          <div className="flex flex-wrap gap-2">
+            <form action={async () => {
+              'use server';
+              await markAllNotificationsReadAction();
+            }}>
+              <button
+                type="submit"
+                disabled={notificationData.unreadCount === 0}
+                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                모두 읽음 처리
+              </button>
+            </form>
+            <form action={async () => {
+              'use server';
+              await deleteAllNotificationsAction();
+            }}>
+              <button
+                type="submit"
+                disabled={notificationData.notifications.length === 0}
+                className="rounded-2xl border border-rose-200 bg-white px-5 py-3 text-sm font-bold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-300"
+              >
+                전체 삭제
+              </button>
+            </form>
+          </div>
         </div>
 
         <NotificationsList notifications={notificationData.notifications} unreadCount={notificationData.unreadCount} />

@@ -74,6 +74,21 @@ public class AppNotificationService {
         notificationRepository.findByMemberIdAndReadAtIsNull(memberId).forEach(AppNotification::markRead);
     }
 
+    @Transactional
+    public void delete(UUID memberId, UUID notificationId) {
+        AppNotification notification = notificationRepository.findById(notificationId)
+            .orElseThrow(() -> new IllegalArgumentException("알림을 찾을 수 없습니다."));
+        if (!notification.getMember().getId().equals(memberId)) {
+            throw new IllegalArgumentException("알림을 삭제할 권한이 없습니다.");
+        }
+        notificationRepository.delete(notification);
+    }
+
+    @Transactional
+    public long deleteAll(UUID memberId) {
+        return notificationRepository.deleteByMemberId(memberId);
+    }
+
     @Scheduled(cron = "0 20 3 * * *", zone = "Asia/Seoul")
     @Transactional
     public void deleteExpiredNotifications() {

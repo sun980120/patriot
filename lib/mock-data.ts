@@ -76,8 +76,8 @@ export const mockBundle: DashboardBundle = {
       memo: '회비에서 일부 지원 후 참가자 추가 분담',
       created_at: '2026-05-21T10:00:00',
       participant_charges: [
-        { id: 'mc-1', charge_group_id: 'cg-1', member_id: 'member-1', member_name: '홍우성', member_username: 'hongws', amount: 30000, status: 'PAID', paid_at: '2026-05-21T10:10:00', memo: null },
-        { id: 'mc-2', charge_group_id: 'cg-1', member_id: 'member-2', member_name: '박시하', member_username: 'parksh', amount: 30000, status: 'UNPAID', paid_at: null, memo: null },
+        { id: 'mc-1', charge_group_id: 'cg-1', member_id: 'member-1', member_name: '홍우성', member_username: 'hongws', amount: 30000, base_amount: 30000, adjustment_reason: null, status: 'PAID', paid_at: '2026-05-21T10:10:00', memo: null },
+        { id: 'mc-2', charge_group_id: 'cg-1', member_id: 'member-2', member_name: '박시하', member_username: 'parksh', amount: 30000, base_amount: 30000, adjustment_reason: null, status: 'UNPAID', paid_at: null, memo: null },
       ],
     },
   ],

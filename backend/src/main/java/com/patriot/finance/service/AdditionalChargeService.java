@@ -93,6 +93,19 @@ public class AdditionalChargeService {
     }
 
     @Transactional
+    public MemberChargeResponse updateChargeAmount(UUID chargeId, Integer amount, String adjustmentReason) {
+        MemberCharge charge = memberChargeRepository.findById(chargeId)
+            .orElseThrow(() -> new IllegalArgumentException("추가 비용 청구 내역을 찾을 수 없습니다."));
+
+        if (charge.getChargeGroup().isSettlementCompleted()) {
+            throw new IllegalArgumentException("정산 완료된 추가 비용은 금액을 수정할 수 없습니다.");
+        }
+
+        charge.updateAmount(amount, adjustmentReason);
+        return toChargeResponse(charge);
+    }
+
+    @Transactional
     public ChargeGroupResponse settleSurplus(UUID chargeGroupId) {
         ChargeGroup group = chargeGroupRepository.findById(chargeGroupId)
             .orElseThrow(() -> new IllegalArgumentException("추가 비용 이벤트를 찾을 수 없습니다."));
@@ -218,6 +231,8 @@ public class AdditionalChargeService {
             charge.getMember().getFullName(),
             charge.getMember().getUsername(),
             charge.getAmount(),
+            charge.getBaseAmountOrAmount(),
+            charge.getAdjustmentReason(),
             charge.getStatus(),
             charge.getPaidAt(),
             charge.getMemo()

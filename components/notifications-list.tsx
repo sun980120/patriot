@@ -1,9 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import type { Route } from 'next';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
-import { markNotificationReadAction } from '@/app/actions';
+import { deleteNotificationAction, markNotificationReadAction } from '@/app/actions';
 import type { AppNotification } from '@/lib/notifications-data';
 
 type NotificationTab = 'unread' | 'all';
@@ -29,6 +29,7 @@ function typeLabel(type: AppNotification['type']) {
 }
 
 export function NotificationsList({ notifications, unreadCount }: { notifications: AppNotification[]; unreadCount: number }) {
+  const router = useRouter();
   const [items, setItems] = useState(notifications);
   const [tab, setTab] = useState<NotificationTab>('unread');
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -50,6 +51,40 @@ export function NotificationsList({ notifications, unreadCount }: { notification
         item.id === notificationId ? { ...item, read: true, readAt: new Date().toISOString() } : item
       ));
       window.dispatchEvent(new Event('patriot:notifications-changed'));
+    });
+  };
+
+  const deleteNotification = (notificationId: string) => {
+    setPendingId(notificationId);
+    startTransition(async () => {
+      const result = await deleteNotificationAction(notificationId);
+      setPendingId(null);
+      if (!result.ok) return;
+
+      setItems((current) => current.filter((item) => item.id !== notificationId));
+      window.dispatchEvent(new Event('patriot:notifications-changed'));
+    });
+  };
+
+  const openNotificationLink = (item: AppNotification) => {
+    if (!item.linkUrl) return;
+
+    if (item.read) {
+      router.push(item.linkUrl as Route);
+      return;
+    }
+
+    setPendingId(item.id);
+    startTransition(async () => {
+      const result = await markNotificationReadAction(item.id);
+      setPendingId(null);
+      if (!result.ok) return;
+
+      setItems((current) => current.map((currentItem) =>
+        currentItem.id === item.id ? { ...currentItem, read: true, readAt: new Date().toISOString() } : currentItem
+      ));
+      window.dispatchEvent(new Event('patriot:notifications-changed'));
+      router.push(item.linkUrl as Route);
     });
   };
 
@@ -90,9 +125,14 @@ export function NotificationsList({ notifications, unreadCount }: { notification
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
                 {item.linkUrl ? (
-                  <Link href={item.linkUrl as Route} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => openNotificationLink(item)}
+                    disabled={pendingId === item.id}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
                     바로가기
-                  </Link>
+                  </button>
                 ) : null}
                 {!item.read ? (
                   <button
@@ -104,6 +144,14 @@ export function NotificationsList({ notifications, unreadCount }: { notification
                     {pendingId === item.id ? '처리 중' : '읽음'}
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => deleteNotification(item.id)}
+                  disabled={pendingId === item.id}
+                  className="rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm font-bold text-rose-600 disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-300"
+                >
+                  삭제
+                </button>
               </div>
             </div>
           </article>

@@ -11,6 +11,8 @@ public record MemberChargeResponse(
     String memberName,
     String memberUsername,
     Integer amount,
+    Integer baseAmount,
+    String adjustmentReason,
     AdditionalChargeStatus status,
     LocalDateTime paidAt,
     String memo

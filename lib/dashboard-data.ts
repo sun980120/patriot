@@ -101,6 +101,8 @@ type DashboardApiResponse = {
       memberName: string;
       memberUsername: string | null;
       amount: number;
+      baseAmount: number | null;
+      adjustmentReason: string | null;
       status: ChargeGroup['participant_charges'][number]['status'];
       paidAt: string | null;
       memo: string | null;
@@ -209,6 +211,8 @@ function toChargeGroup(row: DashboardApiResponse['chargeGroups'][number]): Charg
       member_name: charge.memberName,
       member_username: charge.memberUsername,
       amount: charge.amount,
+      base_amount: charge.baseAmount ?? charge.amount,
+      adjustment_reason: charge.adjustmentReason ?? null,
       status: charge.status,
       paid_at: charge.paidAt,
       memo: charge.memo,

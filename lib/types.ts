@@ -69,6 +69,8 @@ export type ParticipantCharge = {
   member_name: string;
   member_username: string | null;
   amount: number;
+  base_amount: number;
+  adjustment_reason: string | null;
   status: AdditionalChargeStatus;
   paid_at: string | null;
   memo: string | null;
