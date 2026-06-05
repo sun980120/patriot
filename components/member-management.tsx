@@ -266,6 +266,7 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
         }
         setToastTone('success');
         setMessage('가입 신청이 삭제되었습니다.');
+        router.refresh();
       });
     }
   };

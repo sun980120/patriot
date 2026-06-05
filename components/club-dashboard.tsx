@@ -730,6 +730,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
           router.refresh();
           return;
         }
+        router.refresh();
       });
     }
   };
