@@ -16,5 +16,7 @@ public interface AppNotificationRepository extends JpaRepository<AppNotification
 
     boolean existsByMemberIdAndTypeAndTitleAndMessageAndReadAtIsNull(UUID memberId, NotificationType type, String title, String message);
 
+    long deleteByMemberId(UUID memberId);
+
     long deleteByCreatedAtBefore(LocalDateTime createdAt);
 }

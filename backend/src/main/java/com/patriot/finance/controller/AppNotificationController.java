@@ -7,6 +7,7 @@ import com.patriot.finance.service.AppNotificationService;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,5 +42,17 @@ public class AppNotificationController {
     public MessageResponse markAllRead() {
         notificationService.markAllRead(SecurityUtils.currentUser().getMember().getId());
         return new MessageResponse("모든 알림을 읽음 처리했습니다.");
+    }
+
+    @DeleteMapping("/{notificationId}")
+    public MessageResponse delete(@PathVariable UUID notificationId) {
+        notificationService.delete(SecurityUtils.currentUser().getMember().getId(), notificationId);
+        return new MessageResponse("알림을 삭제했습니다.");
+    }
+
+    @DeleteMapping
+    public MessageResponse deleteAll() {
+        long deletedCount = notificationService.deleteAll(SecurityUtils.currentUser().getMember().getId());
+        return new MessageResponse("알림 " + deletedCount + "건을 삭제했습니다.");
     }
 }

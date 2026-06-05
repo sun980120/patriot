@@ -18,6 +18,7 @@ function refreshHome() {
   revalidatePath('/member');
   revalidatePath('/admin/members');
   revalidatePath('/admin/finance');
+  revalidatePath('/notifications');
 }
 
 export async function loginAction(username: string, password: string, rememberMe = false): Promise<ActionResult> {
@@ -287,6 +288,32 @@ export async function markAllNotificationsReadAction(): Promise<ActionResult> {
   return { ok: true };
 }
 
+export async function deleteNotificationAction(notificationId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/app-notifications/${notificationId}`, {
+    method: 'DELETE',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '알림 삭제에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: result.message ?? '알림을 삭제했습니다.' };
+}
+
+export async function deleteAllNotificationsAction(): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/app-notifications', {
+    method: 'DELETE',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '알림 전체 삭제에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: result.message ?? '모든 알림을 삭제했습니다.' };
+}
+
 export async function approveMemberAction(memberId: string): Promise<ActionResult> {
   const result = await serverApiFetch(`/api/admin/members/${memberId}/approve`, {
     method: 'PATCH',
@@ -498,6 +525,26 @@ export async function toggleAdditionalChargePaidAction(chargeId: string, paid: b
   return { ok: true };
 }
 
+export async function updateAdditionalChargeAmountAction(args: {
+  chargeId: string;
+  amount: number;
+  adjustmentReason?: string | null;
+}): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/additional-charges/${args.chargeId}/amount`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      amount: args.amount,
+      adjustmentReason: args.adjustmentReason ?? null,
+    }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '참가자별 추가 비용 금액 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true };
+}
 
 export async function settleAdditionalChargeSurplusAction(chargeGroupId: string): Promise<ActionResult> {
   const result = await serverApiFetch(`/api/additional-charges/${chargeGroupId}/settle`, {

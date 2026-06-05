@@ -13,6 +13,7 @@ import {
   sendAdditionalChargeReminderAction,
   settleAdditionalChargeSurplusAction,
   toggleAdditionalChargePaidAction,
+  updateAdditionalChargeAmountAction,
 } from '@/app/actions';
 import { HIDDEN_PROFILE_EMAILS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
@@ -26,6 +27,8 @@ const CATEGORY_LABELS: Record<AdditionalChargeCategory, string> = {
   TOURNAMENT_FEE: '대회비',
   ETC_FEE: '기타 비용',
 };
+
+type ChargeCreateMode = 'split' | 'manual';
 
 function formatNumberInput(value: string) {
   const digits = value.replace(/\D/g, '');
@@ -47,9 +50,11 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const [chargeForm, setChargeForm] = useState({
     title: '',
     category: 'TOURNAMENT_FEE' as AdditionalChargeCategory,
+    chargeMode: 'split' as ChargeCreateMode,
     eventDate: '',
     supportAmount: '',
     totalExpenseAmount: '',
+    manualAmount: '',
     roundingUnit: '1000' as '1' | '10' | '100' | '1000',
     memo: '',
     participantIds: [] as string[],
@@ -59,6 +64,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const [groupParticipantSearch, setGroupParticipantSearch] = useState<Record<string, string>>({});
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const [chargeFilter, setChargeFilter] = useState<'settlement_pending' | 'settlement_completed'>('settlement_pending');
+  const [chargeAmountForms, setChargeAmountForms] = useState<Record<string, { amount: string; reason: string }>>({});
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
@@ -122,16 +128,23 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const selectedParticipantCount = chargeForm.participantIds.length;
   const supportAmountPreview = parseNumberInput(chargeForm.supportAmount || '0');
   const totalExpenseAmountPreview = parseNumberInput(chargeForm.totalExpenseAmount || '0');
+  const manualAmountPreview = parseNumberInput(chargeForm.manualAmount || '0');
   const roundingUnitPreview = Number(chargeForm.roundingUnit || '1000');
   const participantExpenseBase =
     selectedParticipantCount > 0 ? Math.max(totalExpenseAmountPreview - supportAmountPreview, 0) / selectedParticipantCount : 0;
-  const calculatedAmountPerParticipant =
+  const calculatedSplitAmountPerParticipant =
     selectedParticipantCount > 0 && totalExpenseAmountPreview > 0
       ? Math.ceil(participantExpenseBase / roundingUnitPreview) * roundingUnitPreview
       : 0;
+  const calculatedAmountPerParticipant =
+    chargeForm.chargeMode === 'manual' ? manualAmountPreview : calculatedSplitAmountPerParticipant;
   const calculatedParticipantChargeTotal = calculatedAmountPerParticipant * selectedParticipantCount;
+  const effectiveTotalExpenseAmountPreview =
+    chargeForm.chargeMode === 'manual'
+      ? totalExpenseAmountPreview || calculatedParticipantChargeTotal
+      : totalExpenseAmountPreview;
   const calculatedSurplusPreview = Math.max(
-    calculatedParticipantChargeTotal - Math.max(totalExpenseAmountPreview - supportAmountPreview, 0),
+    calculatedParticipantChargeTotal - Math.max(effectiveTotalExpenseAmountPreview - supportAmountPreview, 0),
     0
   );
 
@@ -260,13 +273,23 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     if (!selectedYear) return;
 
     const title = chargeForm.title.trim();
-    const amountPerParticipant = calculatedAmountPerParticipant;
     const supportAmount = parseNumberInput(chargeForm.supportAmount || '0');
-    const totalExpenseAmount = parseNumberInput(chargeForm.totalExpenseAmount || '0');
+    const inputTotalExpenseAmount = parseNumberInput(chargeForm.totalExpenseAmount || '0');
+    const manualAmount = parseNumberInput(chargeForm.manualAmount || '0');
+    const amountPerParticipant = chargeForm.chargeMode === 'manual'
+      ? manualAmount
+      : calculatedAmountPerParticipant;
+    const totalExpenseAmount = chargeForm.chargeMode === 'manual'
+      ? inputTotalExpenseAmount || amountPerParticipant * chargeForm.participantIds.length
+      : inputTotalExpenseAmount;
 
-    if (!title || !chargeForm.participantIds.length || !totalExpenseAmount) {
+    if (!title || !chargeForm.participantIds.length || (chargeForm.chargeMode === 'split' ? !totalExpenseAmount : !amountPerParticipant)) {
       setToastTone('error');
-      setMessage('이벤트명, 참가자, 총 지출 금액을 모두 입력해 주세요.');
+      setMessage(
+        chargeForm.chargeMode === 'manual'
+          ? '이벤트명, 참가자, 1인당 납부 금액을 모두 입력해 주세요.'
+          : '이벤트명, 참가자, 총 지출 금액을 모두 입력해 주세요.'
+      );
       return;
     }
 
@@ -301,6 +324,8 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
         member_name: member.full_name,
         member_username: member.username,
         amount: amountPerParticipant,
+        base_amount: amountPerParticipant,
+        adjustment_reason: null,
         status: 'UNPAID',
         paid_at: null,
         memo: chargeForm.memo || null,
@@ -310,9 +335,11 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     setChargeForm({
       title: '',
       category: 'TOURNAMENT_FEE',
+      chargeMode: 'split',
       eventDate: '',
       supportAmount: '',
       totalExpenseAmount: '',
+      manualAmount: '',
       roundingUnit: '1000',
       memo: '',
       participantIds: [],
@@ -384,6 +411,71 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           setMessage(result.message ?? '추가 비용 납부 상태 변경에 실패했습니다.');
           router.refresh();
         }
+      });
+    }
+  };
+
+  const getChargeAmountForm = (charge: ParticipantCharge) =>
+    chargeAmountForms[charge.id] ?? {
+      amount: formatNumberInput(String(charge.amount)),
+      reason: charge.adjustment_reason ?? '',
+    };
+
+  const updateChargeAmount = (chargeGroupId: string, charge: ParticipantCharge) => {
+    const form = getChargeAmountForm(charge);
+    const amount = parseNumberInput(form.amount);
+    const reason = form.reason.trim();
+
+    if (!amount) {
+      setToastTone('error');
+      setMessage('수정할 금액을 입력해 주세요.');
+      return;
+    }
+
+    setMessage('');
+    setData((current) => ({
+      ...current,
+      chargeGroups: current.chargeGroups.map((group) => {
+        if (group.id !== chargeGroupId) return group;
+
+        const nextParticipantCharges: ParticipantCharge[] = group.participant_charges.map((item) =>
+          item.id === charge.id
+            ? {
+                ...item,
+                amount,
+                base_amount: item.base_amount ?? item.amount,
+                adjustment_reason: reason || null,
+              }
+            : item
+        );
+
+        return {
+          ...group,
+          participant_charges: nextParticipantCharges,
+          participant_charge_total: nextParticipantCharges.reduce((sum, item) => sum + item.amount, 0),
+          participant_paid_total: nextParticipantCharges.reduce((sum, item) => sum + (item.status === 'PAID' ? item.amount : 0), 0),
+        };
+      }),
+    }));
+    setToastTone('success');
+    setMessage(`${charge.member_name}님 추가 비용 금액을 수정했습니다.`);
+
+    if (source === 'spring') {
+      startTransition(async () => {
+        const result = await updateAdditionalChargeAmountAction({
+          chargeId: charge.id,
+          amount,
+          adjustmentReason: reason || null,
+        });
+
+        if (!result.ok) {
+          setToastTone('error');
+          setMessage(result.message ?? '추가 비용 금액 수정에 실패했습니다.');
+          router.refresh();
+          return;
+        }
+
+        router.refresh();
       });
     }
   };
@@ -612,11 +704,71 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           />
         </div>
 
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.35fr]">
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
+            <p className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">계산 방식</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setChargeForm((current) => ({ ...current, chargeMode: 'split' }))}
+                className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                  chargeForm.chargeMode === 'split'
+                    ? 'bg-brand-700 text-white shadow-sm'
+                    : 'bg-white text-slate-600 hover:text-brand-800'
+                }`}
+              >
+                총 지출 N빵
+              </button>
+              <button
+                type="button"
+                onClick={() => setChargeForm((current) => ({ ...current, chargeMode: 'manual' }))}
+                className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                  chargeForm.chargeMode === 'manual'
+                    ? 'bg-brand-700 text-white shadow-sm'
+                    : 'bg-white text-slate-600 hover:text-brand-800'
+                }`}
+              >
+                1인당 금액 직접 입력
+              </button>
+            </div>
+            <p className="mt-2 px-2 text-xs font-semibold text-slate-500">
+              {chargeForm.chargeMode === 'manual'
+                ? '선택 회원 전원에게 입력한 1인당 금액을 그대로 부과합니다.'
+                : '총 지출에서 공용지원금을 뺀 금액을 선택 인원으로 나눕니다.'}
+            </p>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
+            <p className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">비용 유형</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {Object.entries(CATEGORY_LABELS).map(([value, label]) => {
+                const selected = chargeForm.category === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() =>
+                      setChargeForm((current) => ({
+                        ...current,
+                        category: value as AdditionalChargeCategory,
+                      }))
+                    }
+                    className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
+                      selected
+                        ? 'border-brand-300 bg-brand-100 text-brand-900'
+                        : 'border-transparent bg-white text-slate-600 hover:text-brand-800'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <input value={chargeForm.title} onChange={(event) => setChargeForm((current) => ({ ...current, title: event.target.value }))} type="text" placeholder="예: 2026 춘계대회 참가 분담금" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
-          <select value={chargeForm.category} onChange={(event) => setChargeForm((current) => ({ ...current, category: event.target.value as AdditionalChargeCategory }))} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none">
-            {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
+          <input value={chargeForm.title} onChange={(event) => setChargeForm((current) => ({ ...current, title: event.target.value }))} type="text" placeholder="예: 2026 춘계대회 참가 분담금" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none lg:col-span-2" />
           <label className="block rounded-2xl border border-slate-200 bg-white px-4 py-2.5 focus-within:border-brand-400">
             <span className="block text-xs font-semibold text-slate-400">마감 날짜</span>
             <input
@@ -627,22 +779,33 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
             />
           </label>
           <input value={chargeForm.supportAmount} onChange={(event) => setChargeForm((current) => ({ ...current, supportAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="회비 공용지원 금액 (없으면 비워두기)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
-          <input value={chargeForm.totalExpenseAmount} onChange={(event) => setChargeForm((current) => ({ ...current, totalExpenseAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="총 지출 금액" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
-          <select
-            value={chargeForm.roundingUnit}
-            onChange={(event) =>
-              setChargeForm((current) => ({
-                ...current,
-                roundingUnit: event.target.value as '1' | '10' | '100' | '1000',
-              }))
-            }
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
-          >
-            <option value="1">1원 단위</option>
-            <option value="10">10원 올림</option>
-            <option value="100">100원 올림</option>
-            <option value="1000">1,000원 올림</option>
-          </select>
+          <input value={chargeForm.totalExpenseAmount} onChange={(event) => setChargeForm((current) => ({ ...current, totalExpenseAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder={chargeForm.chargeMode === 'manual' ? '실제 지출 금액 (선택)' : '총 지출 금액'} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          {chargeForm.chargeMode === 'manual' ? (
+            <input
+              value={chargeForm.manualAmount}
+              onChange={(event) => setChargeForm((current) => ({ ...current, manualAmount: formatNumberInput(event.target.value) }))}
+              type="text"
+              inputMode="numeric"
+              placeholder="1인당 납부 금액"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            />
+          ) : (
+            <select
+              value={chargeForm.roundingUnit}
+              onChange={(event) =>
+                setChargeForm((current) => ({
+                  ...current,
+                  roundingUnit: event.target.value as '1' | '10' | '100' | '1000',
+                }))
+              }
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+            >
+              <option value="1">1원 단위</option>
+              <option value="10">10원 올림</option>
+              <option value="100">100원 올림</option>
+              <option value="1000">1,000원 올림</option>
+            </select>
+          )}
           <input value={chargeForm.memo} onChange={(event) => setChargeForm((current) => ({ ...current, memo: event.target.value }))} type="text" placeholder="메모 (선택)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
         </div>
 
@@ -652,7 +815,9 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
             <p className="mt-2 text-lg font-black text-slate-900">{selectedParticipantCount}명</p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">1인당 자동 분담금</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {chargeForm.chargeMode === 'manual' ? '1인당 직접 청구금' : '1인당 자동 분담금'}
+            </p>
             <p className="mt-2 text-lg font-black text-slate-900">{formatCurrency(calculatedAmountPerParticipant)}</p>
           </div>
           <div>
@@ -660,7 +825,9 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
             <p className="mt-2 text-lg font-black text-slate-900">{formatCurrency(calculatedParticipantChargeTotal)}</p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">예상 잔액 세입</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {chargeForm.chargeMode === 'manual' ? '예상 정산 잔액' : '예상 잔액 세입'}
+            </p>
             <p className="mt-2 text-lg font-black text-slate-900">{formatCurrency(calculatedSurplusPreview)}</p>
           </div>
         </div>
@@ -845,19 +1012,68 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                     <div className="mt-4 grid gap-3">
                       {visibleParticipantCharges.length ? visibleParticipantCharges.map((charge) => {
                         const paid = charge.status === 'PAID';
+                        const amountForm = getChargeAmountForm(charge);
+                        const adjusted = charge.base_amount !== charge.amount || Boolean(charge.adjustment_reason);
                         return (
-                          <div key={charge.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-                            <div>
-                              <p className="font-semibold text-slate-900">{charge.member_name}</p>
-                              <p className="mt-1 text-xs text-slate-500">{charge.member_username ?? '아이디 없음'} · {formatCurrency(charge.amount)}</p>
+                          <div key={charge.id} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div>
+                                <p className="font-semibold text-slate-900">{charge.member_name}</p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {charge.member_username ?? '아이디 없음'} · 최종 {formatCurrency(charge.amount)}
+                                </p>
+                                {adjusted ? (
+                                  <p className="mt-1 text-xs font-semibold text-amber-800">
+                                    기준 {formatCurrency(charge.base_amount)}
+                                    {charge.adjustment_reason ? ` · ${charge.adjustment_reason}` : ''}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <button
+                                onClick={() => toggleChargePaid(group.id, charge, !paid)}
+                                disabled={group.settlement_completed || isPending}
+                                className={`rounded-2xl px-4 py-2 text-sm font-bold transition ${group.settlement_completed ? 'cursor-not-allowed bg-slate-200 text-slate-500' : paid ? 'bg-emerald-100 text-emerald-900' : 'bg-white text-slate-600 hover:bg-brand-50 hover:text-brand-800'}`}
+                              >
+                                {group.settlement_completed ? (paid ? '정산 완료' : '정산 종료') : paid ? '납부 완료' : '미납'}
+                              </button>
                             </div>
-                            <button
-                              onClick={() => toggleChargePaid(group.id, charge, !paid)}
-                              disabled={group.settlement_completed || isPending}
-                              className={`rounded-2xl px-4 py-2 text-sm font-bold transition ${group.settlement_completed ? 'cursor-not-allowed bg-slate-200 text-slate-500' : paid ? 'bg-emerald-100 text-emerald-900' : 'bg-white text-slate-600 hover:bg-brand-50 hover:text-brand-800'}`}
-                            >
-                              {group.settlement_completed ? (paid ? '정산 완료' : '정산 종료') : paid ? '납부 완료' : '미납'}
-                            </button>
+                            {!group.settlement_completed ? (
+                              <div className="mt-3 grid gap-2 lg:grid-cols-[160px_1fr_auto]">
+                                <input
+                                  value={amountForm.amount}
+                                  onChange={(event) =>
+                                    setChargeAmountForms((current) => ({
+                                      ...current,
+                                      [charge.id]: { ...amountForm, amount: formatNumberInput(event.target.value) },
+                                    }))
+                                  }
+                                  inputMode="numeric"
+                                  type="text"
+                                  placeholder="최종 금액"
+                                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none"
+                                />
+                                <input
+                                  value={amountForm.reason}
+                                  onChange={(event) =>
+                                    setChargeAmountForms((current) => ({
+                                      ...current,
+                                      [charge.id]: { ...amountForm, reason: event.target.value },
+                                    }))
+                                  }
+                                  type="text"
+                                  placeholder="조정 사유 예: 교통비 면제"
+                                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => updateChargeAmount(group.id, charge)}
+                                  disabled={isPending}
+                                  className="rounded-2xl bg-brand-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                                >
+                                  금액 저장
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                         );
                       }) : (
