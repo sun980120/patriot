@@ -63,6 +63,7 @@ export function NotificationsList({ notifications, unreadCount }: { notification
 
       setItems((current) => current.filter((item) => item.id !== notificationId));
       window.dispatchEvent(new Event('patriot:notifications-changed'));
+      router.refresh();
     });
   };
 
