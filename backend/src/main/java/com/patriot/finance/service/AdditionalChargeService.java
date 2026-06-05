@@ -106,7 +106,7 @@ public class AdditionalChargeService {
     }
 
     @Transactional
-    public ChargeGroupResponse settleSurplus(UUID chargeGroupId) {
+    public ChargeGroupResponse settleSurplus(UUID chargeGroupId, Integer actualCost) {
         ChargeGroup group = chargeGroupRepository.findById(chargeGroupId)
             .orElseThrow(() -> new IllegalArgumentException("추가 비용 이벤트를 찾을 수 없습니다."));
 
@@ -117,8 +117,8 @@ public class AdditionalChargeService {
             throw new IllegalArgumentException("미납 참가자가 남아 있어 정산 완료를 진행할 수 없습니다.");
         }
 
-        if (group.getActualCost() == null || group.getActualCost() <= 0) {
-            throw new IllegalArgumentException("총 지출 금액이 없어 정산을 진행할 수 없습니다.");
+        if (actualCost == null || actualCost <= 0) {
+            throw new IllegalArgumentException("실제 사용금액을 입력해야 정산을 진행할 수 있습니다.");
         }
 
         int participantPaidTotal = memberChargeRepository.findByChargeGroupIdOrderByCreatedAtDesc(group.getId()).stream()
@@ -126,7 +126,6 @@ public class AdditionalChargeService {
             .mapToInt(MemberCharge::getAmount)
             .sum();
 
-        int actualCost = group.getActualCost();
         int supportAmount = group.getSupportAmount();
         int participantExpenseAmount = Math.max(actualCost - supportAmount, 0);
         int remainingCostForParticipants = participantExpenseAmount;
@@ -149,7 +148,7 @@ public class AdditionalChargeService {
             expenseEntryRepository.save(ExpenseEntry.builder()
                 .fiscalYear(group.getFiscalYear())
                 .chargeGroup(group)
-                .label(group.getTitle() + " 나머지 구매비")
+                .label(group.getTitle() + " 참가자 부담")
                 .amount(participantExpenseAmount)
                 .memo(group.getMemo())
                 .build());

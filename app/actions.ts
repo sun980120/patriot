@@ -546,9 +546,10 @@ export async function updateAdditionalChargeAmountAction(args: {
   return { ok: true };
 }
 
-export async function settleAdditionalChargeSurplusAction(chargeGroupId: string): Promise<ActionResult> {
+export async function settleAdditionalChargeSurplusAction(chargeGroupId: string, actualCost: number): Promise<ActionResult> {
   const result = await serverApiFetch(`/api/additional-charges/${chargeGroupId}/settle`, {
     method: 'PATCH',
+    body: JSON.stringify({ actualCost }),
   });
 
   if (!result.ok) {

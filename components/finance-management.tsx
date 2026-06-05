@@ -65,6 +65,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const [chargeFilter, setChargeFilter] = useState<'settlement_pending' | 'settlement_completed'>('settlement_pending');
   const [chargeAmountForms, setChargeAmountForms] = useState<Record<string, { amount: string; reason: string }>>({});
+  const [settlementActualCostForms, setSettlementActualCostForms] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
@@ -494,10 +495,10 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
       return;
     }
 
-    const actualCost = group.actual_cost ?? 0;
+    const actualCost = parseNumberInput(settlementActualCostForms[group.id] ?? (group.actual_cost ? String(group.actual_cost) : ''));
     if (!Number.isFinite(actualCost) || actualCost <= 0) {
       setToastTone('error');
-      setMessage('총 지출 금액이 없어 정산을 진행할 수 없습니다.');
+      setMessage('정산할 실제 사용금액을 입력해 주세요.');
       return;
     }
 
@@ -526,7 +527,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                 id: `${group.id}-participant-expense`,
                 fiscal_year_id: group.fiscal_year_id,
                 charge_group_id: group.id,
-                label: `${group.title} 나머지 구매비`,
+                label: `${group.title} 참가자 부담`,
                 amount: participantExpenseAmount,
                 memo: group.memo,
               } as ExpenseEntry,
@@ -553,7 +554,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
 
     if (source === 'spring') {
       startTransition(async () => {
-        const result = await settleAdditionalChargeSurplusAction(group.id);
+        const result = await settleAdditionalChargeSurplusAction(group.id, actualCost);
         if (!result.ok) {
           setToastTone('error');
           setMessage(result.message ?? '잔액 세입 처리에 실패했습니다.');
@@ -779,7 +780,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
             />
           </label>
           <input value={chargeForm.supportAmount} onChange={(event) => setChargeForm((current) => ({ ...current, supportAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder="회비 공용지원 금액 (없으면 비워두기)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
-          <input value={chargeForm.totalExpenseAmount} onChange={(event) => setChargeForm((current) => ({ ...current, totalExpenseAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder={chargeForm.chargeMode === 'manual' ? '실제 지출 금액 (선택)' : '총 지출 금액'} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
+          <input value={chargeForm.totalExpenseAmount} onChange={(event) => setChargeForm((current) => ({ ...current, totalExpenseAmount: formatNumberInput(event.target.value) }))} type="text" inputMode="numeric" placeholder={chargeForm.chargeMode === 'manual' ? '정산 기준 비용 (선택)' : '정산 기준 총 비용'} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none" />
           {chargeForm.chargeMode === 'manual' ? (
             <input
               value={chargeForm.manualAmount}
@@ -887,6 +888,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
               : group.participant_charges;
             const expanded = expandedGroupId === group.id;
             const canSettle = unpaidCount === 0 && !isPending;
+            const settlementActualCostValue = settlementActualCostForms[group.id] ?? (group.actual_cost ? formatNumberInput(String(group.actual_cost)) : '');
             return (
               <div key={group.id} className="rounded-3xl border border-slate-200 bg-white p-5">
                 <button
@@ -924,6 +926,29 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                         <span className="rounded-full bg-amber-100 px-3 py-2 text-amber-900">미납 {unpaidCount}명 남아 있어 아직 정산할 수 없습니다</span>
                       )}
                     </div>
+                    {!group.settlement_completed ? (
+                      <div className="mb-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <label className="block text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                          정산 실제 사용금액
+                        </label>
+                        <input
+                          value={settlementActualCostValue}
+                          onChange={(event) =>
+                            setSettlementActualCostForms((current) => ({
+                              ...current,
+                              [group.id]: formatNumberInput(event.target.value),
+                            }))
+                          }
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="실제로 사용한 총 금액"
+                          className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+                        />
+                        <p className="mt-2 text-xs font-semibold text-slate-500">
+                          참가자 실납부액에서 실제 참가자 부담 지출을 제외한 남은 금액이 세입으로 반영됩니다.
+                        </p>
+                      </div>
+                    ) : null}
                     <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
                       <div className="grid gap-3 sm:grid-cols-[auto_auto]">
                         <button
@@ -936,7 +961,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                               : 'bg-slate-900 text-white hover:bg-slate-800'
                           }`}
                         >
-                          남은 금액 세입 처리
+                          실제 사용금액으로 정산
                         </button>
                         {group.settlement_completed ? (
                           <button
@@ -968,7 +993,9 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                        <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">총 지출 {formatCurrency(group.actual_cost ?? 0)}</span>
+                        <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">
+                          {group.settlement_completed ? '실제 사용금액' : '정산 기준 비용'} {formatCurrency(group.actual_cost ?? 0)}
+                        </span>
                         <span className="rounded-full bg-brand-50 px-3 py-2 text-brand-800">세입 반영 잔액 {formatCurrency(group.surplus_amount)}</span>
                         {group.settlement_completed ? <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">정산 완료</span> : null}
                       </div>
