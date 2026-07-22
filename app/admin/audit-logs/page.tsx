@@ -2,13 +2,32 @@ import { redirect } from 'next/navigation';
 import { AccessDenied } from '@/components/access-denied';
 import { AuditLogList } from '@/components/audit-log-list';
 import { SiteNav } from '@/components/site-nav';
-import { loadAuditLogs } from '@/lib/audit-log-data';
+import { buildAuditLogExportPath, loadAuditLogsByFilters, type AuditLogFilters } from '@/lib/audit-log-data';
 import { loadCurrentProfile } from '@/lib/profile-data';
 
-export default async function AdminAuditLogsPage() {
+type PageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function AdminAuditLogsPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const filters: AuditLogFilters = {
+    action: first(params?.action),
+    actorId: first(params?.actorId),
+    targetType: first(params?.targetType),
+    targetKeyword: first(params?.targetKeyword),
+    fromDate: first(params?.fromDate),
+    toDate: first(params?.toDate),
+    limit: first(params?.limit) ?? '100',
+  };
+
   const [profileData, auditResult] = await Promise.all([
     loadCurrentProfile(),
-    loadAuditLogs(100),
+    loadAuditLogsByFilters(filters),
   ]);
 
   if (profileData.mode === 'guest') {
@@ -24,7 +43,7 @@ export default async function AdminAuditLogsPage() {
       {!adminMode ? (
         <AccessDenied />
       ) : auditResult.ok ? (
-        <AuditLogList logs={auditResult.logs} />
+        <AuditLogList logs={auditResult.logs} filters={filters} exportHref={buildAuditLogExportPath(filters)} />
       ) : (
         <section className="rounded-[28px] border border-rose-200 bg-white/90 p-6 shadow-soft">
           <p className="text-sm font-black text-rose-600">감사 로그를 불러오지 못했습니다.</p>
