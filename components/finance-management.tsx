@@ -126,6 +126,9 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const expenseTotal = expenses.reduce((sum, item) => sum + item.amount, 0);
   const extraChargeTotal = allChargeGroups.reduce((sum, group) => sum + group.participant_charge_total, 0);
   const extraChargePaidTotal = allChargeGroups.reduce((sum, group) => sum + group.participant_paid_total, 0);
+  const reportExportHref = selectedYear
+    ? `/api/admin/finance-report/export?fiscalYearId=${encodeURIComponent(selectedYear.id)}`
+    : '#';
   const selectedParticipantCount = chargeForm.participantIds.length;
   const supportAmountPreview = parseNumberInput(chargeForm.supportAmount || '0');
   const totalExpenseAmountPreview = parseNumberInput(chargeForm.totalExpenseAmount || '0');
@@ -675,18 +678,30 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
             <span className="rounded-full bg-slate-100 px-3 py-2">추가 비용 납부 {formatCurrency(extraChargePaidTotal)}</span>
             <span className="rounded-full bg-slate-100 px-3 py-2">{source === 'spring' ? 'Spring API' : 'Mock'} {isPending ? '동기화 중' : '연결됨'}</span>
           </div>
-          <label className="block">
-            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">연도 선택</span>
-            <select
-              value={selectedYearId}
-              onChange={(event) => setSelectedYearId(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">연도 선택</span>
+              <select
+                value={selectedYearId}
+                onChange={(event) => setSelectedYearId(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+              >
+                {years.map((year) => (
+                  <option key={year.id} value={year.id}>{year.year}년</option>
+                ))}
+              </select>
+            </label>
+            <a
+              href={reportExportHref}
+              className={`inline-flex min-h-11 items-center justify-center rounded-2xl px-4 py-3 text-sm font-black transition ${
+                selectedYear
+                  ? 'bg-slate-900 text-white hover:bg-slate-700'
+                  : 'pointer-events-none bg-slate-200 text-slate-400'
+              }`}
             >
-              {years.map((year) => (
-                <option key={year.id} value={year.id}>{year.year}년</option>
-              ))}
-            </select>
-          </label>
+              재정 리포트 CSV
+            </a>
+          </div>
         </div>
       </section>
 
