@@ -13,6 +13,7 @@ import {
   Sparkles,
   Trash2,
   UsersRound,
+  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -157,6 +158,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [pendingShareUpdateProject, setPendingShareUpdateProject] = useState<TacticProject | null>(null);
   const [playbackPreview, setPlaybackPreview] = useState<PlaybackPreview | null>(null);
   const [toast, setToast] = useState<ToastState>(emptyToast);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -310,6 +312,11 @@ export function TacticsEditor({ userName }: { userName: string }) {
     });
   }
 
+  function clearSelection() {
+    setSelectedObjectId(null);
+    setSelectedPathId(null);
+  }
+
   const deleteSelection = useCallback(() => {
     if (!project || !currentScene || isPlaying) return;
 
@@ -328,7 +335,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
           ),
         };
       });
-      setSelectedObjectId(null);
+      clearSelection();
       showToast('선택한 객체를 삭제했습니다.', 'info');
       return;
     }
@@ -345,10 +352,25 @@ export function TacticsEditor({ userName }: { userName: string }) {
           ),
         };
       });
-      setSelectedPathId(null);
+      clearSelection();
       showToast('선택한 경로를 삭제했습니다.', 'info');
     }
   }, [currentScene, isPlaying, project, selectedObjectId, selectedPathId, showToast]);
+
+  function deleteAllObjects() {
+    if (!project || !currentScene || isPlaying) return;
+    if (currentScene.objects.length === 0) {
+      showToast('삭제할 객체가 없습니다.', 'info');
+      return;
+    }
+
+    updateCurrentScene((scene) => ({
+      ...scene,
+      objects: [],
+    }));
+    clearSelection();
+    showToast('현재 장면의 모든 객체를 삭제했습니다.', 'info');
+  }
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -367,8 +389,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
       }
 
       if (event.key === 'Escape') {
-        setSelectedObjectId(null);
-        setSelectedPathId(null);
+        clearSelection();
       }
     }
 
@@ -432,8 +453,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
 
     setProject({ ...project, scenes: nextScenes });
     setSelectedSceneId(nextScene.id);
-    setSelectedObjectId(null);
-    setSelectedPathId(null);
+    clearSelection();
     showToast(
       includePaths
         ? '현재 장면 전체를 복제했습니다.'
@@ -450,16 +470,14 @@ export function TacticsEditor({ userName }: { userName: string }) {
 
     setProject({ ...project, scenes: nextScenes });
     setSelectedSceneId(nextSelected.id);
-    setSelectedObjectId(null);
-    setSelectedPathId(null);
+    clearSelection();
     showToast('장면을 삭제했습니다.', 'info');
   }
 
   function selectScene(sceneId: string) {
     if (isPlaying) return;
     setSelectedSceneId(sceneId);
-    setSelectedObjectId(null);
-    setSelectedPathId(null);
+    clearSelection();
   }
 
   function stopPlayback() {
@@ -478,8 +496,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
     }
 
     stopPlayback();
-    setSelectedObjectId(null);
-    setSelectedPathId(null);
+    clearSelection();
     setIsPlaying(true);
 
     const currentIndex = project.scenes.findIndex((scene) => scene.id === selectedSceneId);
@@ -561,9 +578,44 @@ export function TacticsEditor({ userName }: { userName: string }) {
         projects: nextProjects,
       });
       setProject(serverProject);
-      showToast('서버 전술 보관함에 저장했습니다.');
+      if (serverProject.shareActive && serverProject.shareId) {
+        setPendingShareUpdateProject(serverProject);
+        showToast('서버 전술 보관함에 저장했습니다. 공유본 업데이트 여부를 선택해 주세요.', 'info');
+      } else {
+        setPendingShareUpdateProject(null);
+        showToast('서버 전술 보관함에 저장했습니다.');
+      }
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function updateSharedSnapshot(projectToShare: TacticProject) {
+    if (isSharing) return;
+
+    setIsSharing(true);
+    try {
+      const shareResult = await createTacticShareAction({
+        title: projectToShare.title.trim() || '새 전술',
+        snapshot: copyProject(projectToShare),
+      });
+
+      if (!shareResult.ok || !shareResult.shareId) {
+        showToast(shareResult.message ?? '공유본을 업데이트하지 못했습니다.', 'error');
+        return;
+      }
+
+      const nextProject = {
+        ...projectToShare,
+        shareId: shareResult.shareId,
+        shareActive: true,
+      };
+      setProject(nextProject);
+      await persistCurrentProject(nextProject);
+      setPendingShareUpdateProject(null);
+      showToast('공유본을 최신 저장 내용으로 업데이트했습니다.');
+    } finally {
+      setIsSharing(false);
     }
   }
 
@@ -575,8 +627,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
     const nextProject = copyProject(storedProject);
     setProject(nextProject);
     setSelectedSceneId(nextProject.scenes[0].id);
-    setSelectedObjectId(null);
-    setSelectedPathId(null);
+    clearSelection();
     persistLibrary({ ...library, lastProjectId: projectId });
     showToast(`${nextProject.title} 전술을 서버 보관함에서 열었습니다.`, 'info');
   }
@@ -586,8 +637,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
     const nextProject = createStarterProject('새 전술');
     setProject(nextProject);
     setSelectedSceneId(nextProject.scenes[0].id);
-    setSelectedObjectId(null);
-    setSelectedPathId(null);
+    clearSelection();
     showToast('새 전술판을 준비했습니다. 필요하면 먼저 기존 전술을 저장해 주세요.', 'info');
   }
 
@@ -620,8 +670,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
       const nextProject = nextProjects[0] ? copyProject(nextProjects[0]) : createStarterProject('새 전술');
       setProject(nextProject);
       setSelectedSceneId(nextProject.scenes[0].id);
-      setSelectedObjectId(null);
-      setSelectedPathId(null);
+      clearSelection();
       showToast('서버 보관함에서 전술을 삭제했습니다.', 'info');
     } finally {
       setIsSaving(false);
@@ -649,8 +698,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
       });
       setProject(restoredProject);
       setSelectedSceneId(restoredProject.scenes[0].id);
-      setSelectedObjectId(null);
-      setSelectedPathId(null);
+      clearSelection();
       showToast('삭제 보관함에서 전술을 복구했습니다.');
     } finally {
       setIsSaving(false);
@@ -935,7 +983,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
         </div>
 
         <div className="space-y-3 p-3 sm:space-y-4 sm:p-6">
-          <div className="grid gap-3 rounded-[22px] border border-white/10 bg-white/5 p-3 sm:rounded-[24px] lg:grid-cols-[minmax(260px,1fr)_minmax(220px,0.7fr)_auto] lg:items-end">
+          <div className="grid gap-2 rounded-[18px] border border-white/10 bg-white/5 p-2.5 sm:gap-3 sm:rounded-[24px] sm:p-3 lg:grid-cols-[minmax(260px,1fr)_minmax(220px,0.7fr)_auto] lg:items-end">
             <div className="min-w-0">
               <div className="grid gap-3">
                 <label htmlFor="tactic-title" className="block">
@@ -952,7 +1000,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
                         current ? { ...current, title: event.target.value } : current,
                       )
                     }
-                    className="mt-1 min-h-11 w-full rounded-2xl border border-white/10 bg-white px-3 text-base font-black text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-300 disabled:opacity-60 sm:px-4"
+                    className="mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-white px-3 text-base font-black text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-300 disabled:opacity-60 sm:min-h-11 sm:rounded-2xl sm:px-4"
                     placeholder="전술 이름"
                   />
                 </label>
@@ -962,7 +1010,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
               <legend className="block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
                 Board
               </legend>
-              <div className="mt-1 grid grid-cols-2 gap-1.5 rounded-2xl border border-white/10 bg-slate-950/45 p-1.5">
+              <div className="mt-1 grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-slate-950/45 p-1 sm:gap-1.5 sm:rounded-2xl sm:p-1.5">
                 {TACTIC_BOARD_OPTIONS.map((option) => {
                   const selected = (project.boardType ?? 'board-1') === option.value;
                   return (
@@ -977,7 +1025,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
                           : current,
                       )
                       }
-                      className={`min-h-9 rounded-xl px-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`min-h-8 rounded-lg px-2 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 sm:rounded-xl sm:px-3 sm:text-sm ${
                         selected
                           ? 'bg-sky-400 text-slate-950 shadow-sm'
                           : 'text-slate-300 hover:bg-white/10 hover:text-white'
@@ -989,11 +1037,11 @@ export function TacticsEditor({ userName }: { userName: string }) {
                 })}
               </div>
             </fieldset>
-            <div className="grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 sm:grid-cols-4 lg:flex lg:justify-end">
+            <div className="grid grid-cols-4 gap-1.5 sm:gap-2 lg:flex lg:justify-end">
               <button
                 type="button"
                 onClick={isPlaying ? stopPlayback : playProject}
-                className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-black transition ${
+                className={`inline-flex min-h-9 items-center justify-center gap-1 rounded-xl px-2 text-xs font-black transition sm:min-h-11 sm:gap-2 sm:rounded-2xl sm:px-4 sm:text-sm ${
                   isPlaying
                     ? 'bg-amber-400 text-slate-950 hover:bg-amber-300'
                     : 'bg-brand-600 text-white hover:bg-brand-500'
@@ -1006,7 +1054,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
                 type="button"
                 disabled={isPlaying || isSharing}
                 onClick={handleShareProject}
-                className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`inline-flex min-h-9 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-11 sm:gap-2 sm:rounded-2xl sm:px-4 sm:text-sm ${
                   project.shareActive
                     ? 'border-rose-300/30 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20'
                     : 'border-sky-300/30 bg-sky-400/10 text-sky-100 hover:bg-sky-400/20'
@@ -1017,7 +1065,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
               </button>
               <Link
                 href={'/tactics/community' as Route}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-bold text-white transition hover:bg-white/10"
+                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-xl border border-white/15 bg-white/5 px-2 text-xs font-bold text-white transition hover:bg-white/10 sm:min-h-11 sm:gap-2 sm:rounded-2xl sm:px-4 sm:text-sm"
               >
                 <UsersRound className="h-4 w-4" />
                 공유 게시판
@@ -1026,7 +1074,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
                 type="button"
                 disabled={isPlaying}
                 onClick={exportPng}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-slate-900 transition hover:bg-slate-100 disabled:opacity-50"
+                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-xl bg-white px-2 text-xs font-black text-slate-900 transition hover:bg-slate-100 disabled:opacity-50 sm:min-h-11 sm:gap-2 sm:rounded-2xl sm:px-4 sm:text-sm"
               >
                 <Download className="h-4 w-4" />
                 PNG 저장
@@ -1041,12 +1089,12 @@ export function TacticsEditor({ userName }: { userName: string }) {
             activeTool={activeTool}
             onSelectTool={(tool) => {
               setActiveTool(tool);
-              setSelectedObjectId(null);
-              setSelectedPathId(null);
+              clearSelection();
             }}
             onAddPlayer={(team) => addObject('player', team)}
             onAddBall={() => addObject('ball', 'neutral')}
             onDeleteSelection={deleteSelection}
+            onDeleteAllObjects={deleteAllObjects}
           />
 
           <div
@@ -1173,8 +1221,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
                         disabled={isPlaying}
                         onClick={() => {
                           setActiveTool(tool);
-                          setSelectedObjectId(null);
-                          setSelectedPathId(null);
+                          clearSelection();
                         }}
                         className={`inline-flex min-h-10 items-center justify-center rounded-2xl px-2 text-xs font-black transition disabled:opacity-50 ${
                           activeTool === tool
@@ -1198,6 +1245,14 @@ export function TacticsEditor({ userName }: { userName: string }) {
                       className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-rose-400/30 bg-rose-500/10 px-2 text-xs font-black text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       선택 삭제
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isPlaying}
+                      onClick={deleteAllObjects}
+                      className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-rose-400/30 bg-rose-950/40 px-2 text-xs font-black text-rose-100 transition hover:bg-rose-900/60 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      전체 삭제
                     </button>
                   </div>
                 </div>
@@ -1515,6 +1570,55 @@ export function TacticsEditor({ userName }: { userName: string }) {
           </div>
         </aside>
       </div>
+
+      {pendingShareUpdateProject ? (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[24px] border border-sky-100 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.3)]">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-sky-600">
+                  공유본 업데이트
+                </p>
+                <h3 className="mt-2 truncate text-xl font-black text-slate-900">
+                  {pendingShareUpdateProject.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingShareUpdateProject(null)}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200"
+                aria-label="닫기"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              내 전술은 서버에 저장되었습니다. 현재 공유 링크와 공유 게시판에도 방금 저장한
+              내용을 반영할까요?
+            </p>
+            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingShareUpdateProject(null);
+                  showToast('공유본은 이전 내용으로 유지했습니다.', 'info');
+                }}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm font-black text-slate-700 transition hover:bg-slate-50"
+              >
+                내 전술만 유지
+              </button>
+              <button
+                type="button"
+                disabled={isSharing}
+                onClick={() => updateSharedSnapshot(pendingShareUpdateProject)}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-sky-500 text-sm font-black text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSharing ? '업데이트 중...' : '공유본도 업데이트'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

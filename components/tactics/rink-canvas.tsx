@@ -404,10 +404,13 @@ export function RinkCanvas({
         const isBall = object.kind === 'ball';
         const objectRadius = isBall ? 10 : 21;
         const selectedRadius = isBall ? 18 : 32;
-        const hitRadius = isBall ? 18 : 32;
         const fill =
           object.team === 'home' ? '#0f172a' : object.team === 'away' ? '#f59e0b' : '#f8fafc';
         const foreground = object.team === 'away' || object.team === 'neutral' ? '#0f172a' : '#ffffff';
+        const handleObjectPointerStart = (event: ReactPointerEvent<SVGGElement>) => {
+          if (activeTool !== 'select') return;
+          handleObjectPointerDown(event, object.id);
+        };
 
         return (
           <g
@@ -424,10 +427,6 @@ export function RinkCanvas({
                   : 'cursor-grab active:cursor-grabbing'
             }
             style={{ touchAction: 'none' }}
-            onPointerDown={(event) => {
-              if (activeTool !== 'select') return;
-              handleObjectPointerDown(event, object.id);
-            }}
             onKeyDown={(event) => {
               if (disabled || (event.key !== 'Enter' && event.key !== ' ')) return;
               event.preventDefault();
@@ -435,7 +434,6 @@ export function RinkCanvas({
               onSelectPath(null);
             }}
           >
-            <circle r={hitRadius} fill="transparent" />
             {selected ? (
               <circle
                 r={selectedRadius}
@@ -443,10 +441,12 @@ export function RinkCanvas({
                 stroke="#facc15"
                 strokeWidth="6"
                 strokeDasharray="8 5"
+                pointerEvents="none"
               />
             ) : null}
             {object.kind === 'goalie' ? (
               <rect
+                onPointerDown={handleObjectPointerStart}
                 x="-25"
                 y="-25"
                 width="50"
@@ -459,6 +459,7 @@ export function RinkCanvas({
               />
             ) : (
               <circle
+                onPointerDown={handleObjectPointerStart}
                 r={objectRadius}
                 fill={isBall ? '#ffffff' : fill}
                 stroke={isBall ? '#0f172a' : '#ffffff'}
