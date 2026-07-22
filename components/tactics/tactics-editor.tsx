@@ -1044,6 +1044,31 @@ export function TacticsEditor({ userName }: { userName: string }) {
                     </div>
                   </div>
                 ) : null}
+                {!isPlaying ? (
+                  <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-2 rounded-2xl border border-white/15 bg-slate-950/80 p-1.5 shadow-2xl backdrop-blur">
+                    {TACTIC_BOARD_OPTIONS.map((option) => {
+                      const selected = (project.boardType ?? 'board-1') === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setProject((current) =>
+                              current ? { ...current, boardType: option.value } : current,
+                            )
+                          }
+                          className={`inline-flex min-h-9 min-w-24 items-center justify-center rounded-xl px-3 text-xs font-black transition ${
+                            selected
+                              ? 'bg-sky-400 text-slate-950'
+                              : 'bg-white/10 text-white hover:bg-white/15'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 <div className="absolute bottom-3 left-3 top-3 z-20 flex w-24 flex-col overflow-hidden rounded-[22px] border border-white/15 bg-slate-950/85 p-2 shadow-2xl backdrop-blur sm:left-4 sm:w-28">
                   <p className="px-1 pb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
                     Tools

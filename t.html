@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        #field { width: 800px; height: 400px; border: 3px solid #333; background: #e0f7fa; position: relative; margin: 20px; }
+        .player { width: 30px; height: 30px; border-radius: 50%; position: absolute; cursor: grab; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; }
+        .C { background-color: red; } /* 센터 */
+        .W { background-color: blue; } /* 윙 */
+        .D { background-color: green; } /* 디펜더 */
+    </style>
+</head>
+<body>
+    <h2>플로어볼 전술 배치 (드래그해서 위치 변경)</h2>
+    <div id="field">
+        <!-- 필드 위치 초기값 -->
+        <div class="player D" style="top:185px; left:50px;">D1</div>
+        <div class="player D" style="top:185px; left:150px;">D2</div>
+        <div class="player C" style="top:185px; left:300px;">C</div>
+        <div class="player W" style="top:50px; left:500px;">W1</div>
+        <div class="player W" style="top:320px; left:500px;">W2</div>
+    </div>
+
+    <script>
+        const players = document.querySelectorAll('.player');
+        let activePlayer = null;
+
+        players.forEach(p => {
+            p.onmousedown = (e) => {
+                activePlayer = p;
+                document.onmousemove = (ev) => {
+                    activePlayer.style.left = ev.clientX - 40 + 'px';
+                    activePlayer.style.top = ev.clientY - 60 + 'px';
+                };
+            };
+        });
+        document.onmouseup = () => document.onmousemove = null;
+    </script>
+</body>
+</html>
