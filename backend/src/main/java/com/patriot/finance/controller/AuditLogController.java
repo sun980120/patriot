@@ -1,6 +1,7 @@
 package com.patriot.finance.controller;
 
 import com.patriot.finance.dto.AuditLogSearchRequest;
+import com.patriot.finance.dto.AuditLogActorResponse;
 import com.patriot.finance.dto.AuditLogResponse;
 import com.patriot.finance.service.AuditLogService;
 import java.time.LocalDate;
@@ -43,6 +44,11 @@ public class AuditLogController {
             toDate,
             limit
         ));
+    }
+
+    @GetMapping("/actors")
+    public List<AuditLogActorResponse> actors() {
+        return auditLogService.findActors();
     }
 
     @GetMapping("/export")

@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { serverApiFetch } from '@/lib/backend-api';
 import { ACCESS_TOKEN_COOKIE, getBackendBaseUrl } from '@/lib/session';
-import type { AuditLog } from '@/lib/types';
+import type { AuditLog, AuditLogActor } from '@/lib/types';
 
 export type AuditLogFilters = {
   action?: string;
@@ -25,6 +25,11 @@ type AuditLogApiResponse = {
   createdAt: string | null;
 };
 
+type AuditLogActorApiResponse = {
+  actorId: string;
+  actorName: string;
+};
+
 function toAuditLog(row: AuditLogApiResponse): AuditLog {
   return {
     id: row.id,
@@ -36,6 +41,13 @@ function toAuditLog(row: AuditLogApiResponse): AuditLog {
     actor_name: row.actorName,
     detail: row.detail,
     created_at: row.createdAt,
+  };
+}
+
+function toAuditLogActor(row: AuditLogActorApiResponse): AuditLogActor {
+  return {
+    actor_id: row.actorId,
+    actor_name: row.actorName,
   };
 }
 
@@ -59,6 +71,24 @@ export async function loadAuditLogsByFilters(filters: AuditLogFilters): Promise<
   }
 
   return { ok: true, logs: result.data.map(toAuditLog) };
+}
+
+export async function loadAuditLogActors(): Promise<{ ok: true; actors: AuditLogActor[] } | { ok: false; message: string }> {
+  if (!getBackendBaseUrl()) {
+    return { ok: false, message: 'PATRIOT_API_BASE_URL 환경변수가 필요합니다.' };
+  }
+
+  const token = (await cookies()).get(ACCESS_TOKEN_COOKIE)?.value;
+  if (!token) {
+    return { ok: false, message: '로그인이 필요합니다.' };
+  }
+
+  const result = await serverApiFetch<AuditLogActorApiResponse[]>('/api/admin/audit-logs/actors');
+  if (!result.ok || !result.data) {
+    return { ok: false, message: result.message ?? '처리자 목록을 불러오지 못했습니다.' };
+  }
+
+  return { ok: true, actors: result.data.map(toAuditLogActor) };
 }
 
 export function buildAuditLogExportPath(filters: AuditLogFilters) {

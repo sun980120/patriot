@@ -2,6 +2,7 @@ package com.patriot.finance.service;
 
 import com.patriot.finance.domain.entity.AuditLog;
 import com.patriot.finance.domain.entity.Member;
+import com.patriot.finance.dto.AuditLogActorResponse;
 import com.patriot.finance.dto.AuditLogSearchRequest;
 import com.patriot.finance.dto.AuditLogResponse;
 import com.patriot.finance.repository.AuditLogRepository;
@@ -66,6 +67,10 @@ public class AuditLogService {
             .append('\n')
         );
         return builder.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    public List<AuditLogActorResponse> findActors() {
+        return auditLogRepository.findDistinctActors();
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

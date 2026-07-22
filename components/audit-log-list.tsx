@@ -1,4 +1,4 @@
-import type { AuditLog } from '@/lib/types';
+import type { AuditLog, AuditLogActor } from '@/lib/types';
 
 export const ACTION_LABELS: Record<string, string> = {
   MEMBER_APPROVED: '회원 승인',
@@ -54,10 +54,11 @@ type AuditLogListProps = {
     toDate?: string;
     limit?: string;
   };
+  actors: AuditLogActor[];
   exportHref: string;
 };
 
-export function AuditLogList({ logs, filters, exportHref }: AuditLogListProps) {
+export function AuditLogList({ logs, filters, actors, exportHref }: AuditLogListProps) {
   return (
     <section className="rounded-[28px] border border-white/70 bg-white/90 p-4 shadow-soft sm:rounded-[36px] sm:p-7">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -101,13 +102,19 @@ export function AuditLogList({ logs, filters, exportHref }: AuditLogListProps) {
           </select>
         </label>
         <label className="grid gap-1 text-xs font-black text-slate-500">
-          처리자 ID
-          <input
+          처리자
+          <select
             name="actorId"
             defaultValue={filters.actorId ?? ''}
-            placeholder="UUID"
             className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-brand-500"
-          />
+          >
+            <option value="">전체</option>
+            {actors.map((actor) => (
+              <option key={actor.actor_id} value={actor.actor_id}>
+                {actor.actor_name}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="grid gap-1 text-xs font-black text-slate-500">
           대상/내용 검색

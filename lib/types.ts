@@ -105,6 +105,11 @@ export type AuditLog = {
   created_at: string | null;
 };
 
+export type AuditLogActor = {
+  actor_id: string;
+  actor_name: string;
+};
+
 export type DashboardBundle = {
   profile: Profile | null;
   fiscalYears: FiscalYear[];
