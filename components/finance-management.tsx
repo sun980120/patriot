@@ -129,6 +129,9 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const reportExportHref = selectedYear
     ? `/api/admin/finance-report/export?fiscalYearId=${encodeURIComponent(selectedYear.id)}`
     : '#';
+  const reportExcelExportHref = selectedYear
+    ? `/api/admin/finance-report/export-xlsx?fiscalYearId=${encodeURIComponent(selectedYear.id)}`
+    : '#';
   const selectedParticipantCount = chargeForm.participantIds.length;
   const supportAmountPreview = parseNumberInput(chargeForm.supportAmount || '0');
   const totalExpenseAmountPreview = parseNumberInput(chargeForm.totalExpenseAmount || '0');
@@ -700,6 +703,16 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
               }`}
             >
               재정 리포트 CSV
+            </a>
+            <a
+              href={reportExcelExportHref}
+              className={`inline-flex min-h-11 items-center justify-center rounded-2xl px-4 py-3 text-sm font-black transition ${
+                selectedYear
+                  ? 'bg-brand-700 text-white hover:bg-brand-800'
+                  : 'pointer-events-none bg-slate-200 text-slate-400'
+              }`}
+            >
+              재정 리포트 Excel
             </a>
           </div>
         </div>

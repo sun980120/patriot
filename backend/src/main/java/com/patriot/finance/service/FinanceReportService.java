@@ -16,6 +16,8 @@ import com.patriot.finance.repository.IncomeEntryRepository;
 import com.patriot.finance.repository.MemberChargeRepository;
 import com.patriot.finance.repository.MemberRepository;
 import com.patriot.finance.repository.MembershipPaymentRepository;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.List;
@@ -24,6 +26,14 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.DataFormat;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +52,46 @@ public class FinanceReportService {
     private final MemberChargeRepository memberChargeRepository;
 
     public byte[] exportFiscalYearCsv(UUID fiscalYearId) {
+        ReportData report = loadReportData(fiscalYearId);
+
+        StringBuilder builder = new StringBuilder();
+        builder.append('\ufeff');
+        appendSummary(builder, report);
+        appendIncomeRows(builder, report.incomes());
+        appendExpenseRows(builder, report.expenses());
+        appendMonthlyPaymentRows(builder, report.fiscalYear(), report.members(), report.paymentsByMemberMonth());
+        appendAdditionalChargeRows(builder, report.memberCharges());
+
+        return builder.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    public byte[] exportFiscalYearXlsx(UUID fiscalYearId) {
+        ReportData report = loadReportData(fiscalYearId);
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+
+            CellStyle moneyStyle = workbook.createCellStyle();
+            DataFormat dataFormat = workbook.createDataFormat();
+            moneyStyle.setDataFormat(dataFormat.getFormat("#,##0"));
+
+            writeSummarySheet(workbook, headerStyle, moneyStyle, report);
+            writeIncomeSheet(workbook, headerStyle, moneyStyle, report.incomes());
+            writeExpenseSheet(workbook, headerStyle, moneyStyle, report.expenses());
+            writeMonthlyPaymentSheet(workbook, headerStyle, moneyStyle, report);
+            writeAdditionalChargeSheet(workbook, headerStyle, moneyStyle, report.memberCharges());
+
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        } catch (IOException exception) {
+            throw new IllegalStateException("재정 리포트 Excel 파일을 생성하지 못했습니다.", exception);
+        }
+    }
+
+    private ReportData loadReportData(UUID fiscalYearId) {
         FiscalYear fiscalYear = fiscalYearRepository.findById(fiscalYearId)
             .orElseThrow(() -> new IllegalArgumentException("연도를 찾을 수 없습니다."));
 
@@ -55,52 +105,20 @@ public class FinanceReportService {
         List<ExpenseEntry> expenses = expenseEntryRepository.findByFiscalYearIdOrderByCreatedAtDesc(fiscalYearId);
         List<MemberCharge> memberCharges = memberChargeRepository.findByChargeGroupFiscalYearIdOrderByCreatedAtDesc(fiscalYearId);
 
-        int manualIncomeTotal = incomes.stream().mapToInt(IncomeEntry::getAmount).sum();
-        int expenseTotal = expenses.stream().mapToInt(ExpenseEntry::getAmount).sum();
-        int monthlyDuesPaidTotal = paymentsByMemberMonth.values().stream()
-            .filter(MembershipPayment::isPaid)
-            .mapToInt(MembershipPayment::getChargedAmount)
-            .sum();
-        int additionalChargePaidTotal = memberCharges.stream()
-            .filter(charge -> charge.getStatus() == AdditionalChargeStatus.PAID)
-            .mapToInt(MemberCharge::getAmount)
-            .sum();
-        int additionalChargeUnpaidTotal = memberCharges.stream()
-            .filter(charge -> charge.getStatus() == AdditionalChargeStatus.UNPAID)
-            .mapToInt(MemberCharge::getAmount)
-            .sum();
-
-        StringBuilder builder = new StringBuilder();
-        builder.append('\ufeff');
-        appendSummary(builder, fiscalYear, members.size(), monthlyDuesPaidTotal, manualIncomeTotal, expenseTotal, additionalChargePaidTotal, additionalChargeUnpaidTotal);
-        appendIncomeRows(builder, incomes);
-        appendExpenseRows(builder, expenses);
-        appendMonthlyPaymentRows(builder, fiscalYear, members, paymentsByMemberMonth);
-        appendAdditionalChargeRows(builder, memberCharges);
-
-        return builder.toString().getBytes(StandardCharsets.UTF_8);
+        return new ReportData(fiscalYear, members, paymentsByMemberMonth, incomes, expenses, memberCharges);
     }
 
-    private void appendSummary(
-        StringBuilder builder,
-        FiscalYear fiscalYear,
-        int memberCount,
-        int monthlyDuesPaidTotal,
-        int manualIncomeTotal,
-        int expenseTotal,
-        int additionalChargePaidTotal,
-        int additionalChargeUnpaidTotal
-    ) {
+    private void appendSummary(StringBuilder builder, ReportData report) {
         builder.append("요약\n");
         builder.append("항목,값\n");
-        row(builder, "연도", fiscalYear.getYear() + "년");
-        row(builder, "대상 회원 수", memberCount);
-        row(builder, "월회비 납부 합계", monthlyDuesPaidTotal);
-        row(builder, "기타 세입 합계", manualIncomeTotal);
-        row(builder, "지출 합계", expenseTotal);
-        row(builder, "추가 비용 납부 합계", additionalChargePaidTotal);
-        row(builder, "추가 비용 미납 합계", additionalChargeUnpaidTotal);
-        row(builder, "기타 세입 - 지출", manualIncomeTotal - expenseTotal);
+        row(builder, "연도", report.fiscalYear().getYear() + "년");
+        row(builder, "대상 회원 수", report.members().size());
+        row(builder, "월회비 납부 합계", report.monthlyDuesPaidTotal());
+        row(builder, "기타 세입 합계", report.manualIncomeTotal());
+        row(builder, "지출 합계", report.expenseTotal());
+        row(builder, "추가 비용 납부 합계", report.additionalChargePaidTotal());
+        row(builder, "추가 비용 미납 합계", report.additionalChargeUnpaidTotal());
+        row(builder, "기타 세입 - 지출", report.manualIncomeTotal() - report.expenseTotal());
         builder.append('\n');
     }
 
@@ -183,6 +201,173 @@ public class FinanceReportService {
         return member.getApprovalStatus() == ApprovalStatus.APPROVED
             && member.getAppRole() != AppRole.SUPER_ADMIN
             && !HIDDEN_EMAIL.equalsIgnoreCase(member.getEmail());
+    }
+
+    private void writeSummarySheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, ReportData report) {
+        Sheet sheet = workbook.createSheet("요약");
+        writeHeader(sheet, headerStyle, "항목", "값");
+        writeSheetRow(sheet, 1, moneyStyle, "연도", report.fiscalYear().getYear() + "년");
+        writeSheetRow(sheet, 2, moneyStyle, "대상 회원 수", report.members().size());
+        writeSheetRow(sheet, 3, moneyStyle, "월회비 납부 합계", report.monthlyDuesPaidTotal());
+        writeSheetRow(sheet, 4, moneyStyle, "기타 세입 합계", report.manualIncomeTotal());
+        writeSheetRow(sheet, 5, moneyStyle, "지출 합계", report.expenseTotal());
+        writeSheetRow(sheet, 6, moneyStyle, "추가 비용 납부 합계", report.additionalChargePaidTotal());
+        writeSheetRow(sheet, 7, moneyStyle, "추가 비용 미납 합계", report.additionalChargeUnpaidTotal());
+        writeSheetRow(sheet, 8, moneyStyle, "기타 세입 - 지출", report.manualIncomeTotal() - report.expenseTotal());
+        autoSize(sheet, 2);
+    }
+
+    private void writeIncomeSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, List<IncomeEntry> incomes) {
+        Sheet sheet = workbook.createSheet("기타 세입");
+        writeHeader(sheet, headerStyle, "등록일", "항목", "금액", "메모", "추가비용이벤트ID");
+        int rowIndex = 1;
+        for (IncomeEntry entry : incomes) {
+            writeSheetRow(
+                sheet,
+                rowIndex++,
+                moneyStyle,
+                entry.getCreatedAt(),
+                entry.getLabel(),
+                entry.getAmount(),
+                entry.getMemo(),
+                entry.getChargeGroup() == null ? null : entry.getChargeGroup().getId()
+            );
+        }
+        autoSize(sheet, 5);
+    }
+
+    private void writeExpenseSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, List<ExpenseEntry> expenses) {
+        Sheet sheet = workbook.createSheet("지출");
+        writeHeader(sheet, headerStyle, "등록일", "항목", "금액", "메모", "추가비용이벤트ID");
+        int rowIndex = 1;
+        for (ExpenseEntry entry : expenses) {
+            writeSheetRow(
+                sheet,
+                rowIndex++,
+                moneyStyle,
+                entry.getCreatedAt(),
+                entry.getLabel(),
+                entry.getAmount(),
+                entry.getMemo(),
+                entry.getChargeGroup() == null ? null : entry.getChargeGroup().getId()
+            );
+        }
+        autoSize(sheet, 5);
+    }
+
+    private void writeMonthlyPaymentSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, ReportData report) {
+        Sheet sheet = workbook.createSheet("월회비 현황");
+        writeHeader(sheet, headerStyle, "회원명", "아이디", "월", "상태", "금액", "적용등급", "면제사유");
+        int rowIndex = 1;
+        for (Member member : report.members()) {
+            for (Integer month : report.fiscalYear().getVisibleMonths()) {
+                MembershipPayment payment = report.paymentsByMemberMonth().get(member.getId() + ":" + month);
+                boolean autoExempt = payment == null && member.isExemptFor(report.fiscalYear().getYear(), month);
+                String status = payment == null
+                    ? (autoExempt ? "AUTO_EXEMPT" : "UNPAID")
+                    : payment.isPaid()
+                        ? "PAID"
+                        : payment.isManualExempt() ? "MANUAL_EXEMPT" : "UNPAID";
+                int amount = payment == null ? 0 : payment.getChargedAmount();
+                MemberGrade grade = payment == null ? member.getMemberGrade() : payment.getAppliedGrade();
+                String reason = payment == null ? (autoExempt ? "회원 회비 면제 기간" : null) : payment.getExemptionReason();
+
+                writeSheetRow(sheet, rowIndex++, moneyStyle, member.getFullName(), member.getUsername(), month, status, amount, grade, reason);
+            }
+        }
+        autoSize(sheet, 7);
+    }
+
+    private void writeAdditionalChargeSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, List<MemberCharge> charges) {
+        Sheet sheet = workbook.createSheet("추가 비용 청구");
+        writeHeader(sheet, headerStyle, "이벤트명", "카테고리", "이벤트일", "회원명", "아이디", "상태", "금액", "기준금액", "조정사유", "납부일", "메모");
+        int rowIndex = 1;
+        for (MemberCharge charge : charges) {
+            writeSheetRow(
+                sheet,
+                rowIndex++,
+                moneyStyle,
+                charge.getChargeGroup().getTitle(),
+                charge.getChargeGroup().getCategory(),
+                charge.getChargeGroup().getEventDate(),
+                charge.getMember().getFullName(),
+                charge.getMember().getUsername(),
+                charge.getStatus(),
+                charge.getAmount(),
+                charge.getBaseAmountOrAmount(),
+                charge.getAdjustmentReason(),
+                charge.getPaidAt(),
+                charge.getMemo()
+            );
+        }
+        autoSize(sheet, 11);
+    }
+
+    private void writeHeader(Sheet sheet, CellStyle headerStyle, String... values) {
+        Row row = sheet.createRow(0);
+        for (int index = 0; index < values.length; index++) {
+            Cell cell = row.createCell(index);
+            cell.setCellValue(values[index]);
+            cell.setCellStyle(headerStyle);
+        }
+    }
+
+    private void writeSheetRow(Sheet sheet, int rowIndex, CellStyle moneyStyle, Object... values) {
+        Row row = sheet.createRow(rowIndex);
+        for (int index = 0; index < values.length; index++) {
+            Cell cell = row.createCell(index);
+            Object value = values[index];
+            if (value instanceof Number number) {
+                cell.setCellValue(number.doubleValue());
+                cell.setCellStyle(moneyStyle);
+            } else if (value != null) {
+                cell.setCellValue(String.valueOf(value));
+            }
+        }
+    }
+
+    private void autoSize(Sheet sheet, int columns) {
+        for (int index = 0; index < columns; index++) {
+            sheet.autoSizeColumn(index);
+        }
+    }
+
+    private record ReportData(
+        FiscalYear fiscalYear,
+        List<Member> members,
+        Map<String, MembershipPayment> paymentsByMemberMonth,
+        List<IncomeEntry> incomes,
+        List<ExpenseEntry> expenses,
+        List<MemberCharge> memberCharges
+    ) {
+        int manualIncomeTotal() {
+            return incomes.stream().mapToInt(IncomeEntry::getAmount).sum();
+        }
+
+        int expenseTotal() {
+            return expenses.stream().mapToInt(ExpenseEntry::getAmount).sum();
+        }
+
+        int monthlyDuesPaidTotal() {
+            return paymentsByMemberMonth.values().stream()
+                .filter(MembershipPayment::isPaid)
+                .mapToInt(MembershipPayment::getChargedAmount)
+                .sum();
+        }
+
+        int additionalChargePaidTotal() {
+            return memberCharges.stream()
+                .filter(charge -> charge.getStatus() == AdditionalChargeStatus.PAID)
+                .mapToInt(MemberCharge::getAmount)
+                .sum();
+        }
+
+        int additionalChargeUnpaidTotal() {
+            return memberCharges.stream()
+                .filter(charge -> charge.getStatus() == AdditionalChargeStatus.UNPAID)
+                .mapToInt(MemberCharge::getAmount)
+                .sum();
+        }
     }
 
     private void row(StringBuilder builder, Object... values) {

@@ -52,8 +52,22 @@ public class FinanceController {
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
                 .filename("finance-report.csv")
                 .build()
-                .toString())
+            .toString())
             .body(csv);
+    }
+
+    @GetMapping("/reports/export.xlsx")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<byte[]> exportReportExcel(@RequestParam UUID fiscalYearId) {
+        byte[] excel = financeReportService.exportFiscalYearXlsx(fiscalYearId);
+
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+            .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                .filename("finance-report.xlsx")
+                .build()
+                .toString())
+            .body(excel);
     }
 
     @PostMapping("/incomes")
