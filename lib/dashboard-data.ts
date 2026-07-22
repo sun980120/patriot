@@ -1,28 +1,12 @@
 import { cookies } from 'next/headers';
 import { serverApiFetch } from '@/lib/backend-api';
 import { mockBundle } from '@/lib/mock-data';
+import { toProfile, type MemberSummaryApiResponse } from '@/lib/profile-data';
 import { ACCESS_TOKEN_COOKIE, getBackendBaseUrl } from '@/lib/session';
 import type { ChargeGroup, DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
 
 type DashboardApiResponse = {
-  profile: {
-    id: string;
-    fullName: string;
-    email: string | null;
-    username: string | null;
-    phoneNumber: string | null;
-    address: string | null;
-    addressDetail: string | null;
-    birthDate: string | null;
-    appRole: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
-    memberGrade: Profile['member_grade'];
-    gradeSource: 'AUTO' | 'MANUAL';
-    approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
-    active: boolean;
-    feeExemptionMonths: number;
-    feeExemptionStartDate: string | null;
-    joinedAt: string | null;
-  };
+  profile: MemberSummaryApiResponse;
   fiscalYears: Array<{
     id: string;
     year: number;
@@ -35,24 +19,7 @@ type DashboardApiResponse = {
     visibleMonths: number[];
     active: boolean;
   } | null;
-  profiles: Array<{
-    id: string;
-    fullName: string;
-    email: string | null;
-    username: string | null;
-    phoneNumber: string | null;
-    address: string | null;
-    addressDetail: string | null;
-    birthDate: string | null;
-    appRole: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
-    memberGrade: Profile['member_grade'];
-    gradeSource: 'AUTO' | 'MANUAL';
-    approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
-    active: boolean;
-    feeExemptionMonths: number;
-    feeExemptionStartDate: string | null;
-    joinedAt: string | null;
-  }>;
+  profiles: MemberSummaryApiResponse[];
   payments: Array<{
     id: string;
     fiscalYearId: string;
@@ -116,32 +83,6 @@ function hasBackendEnv() {
 
 function mockFallbackEnabled() {
   return process.env.ENABLE_MOCK_FALLBACK === 'true';
-}
-
-function toProfile(row: DashboardApiResponse['profile'] | DashboardApiResponse['profiles'][number]): Profile {
-  const baseAddress = row.address ?? null;
-  const detailAddress = row.addressDetail ?? null;
-  const combinedAddress = [baseAddress, detailAddress].filter(Boolean).join(', ') || null;
-
-  return {
-    id: row.id,
-    full_name: row.fullName,
-    email: row.email ?? null,
-    username: row.username ?? null,
-    phone_number: row.phoneNumber ?? null,
-    address: combinedAddress,
-    base_address: baseAddress,
-    detail_address: detailAddress,
-    birth_date: row.birthDate ?? null,
-    app_role: row.appRole.toLowerCase() as Profile['app_role'],
-    member_grade: row.memberGrade,
-    grade_source: row.gradeSource.toLowerCase() as Profile['grade_source'],
-    approval_status: row.approvalStatus.toLowerCase() as Profile['approval_status'],
-    is_active: row.active,
-    fee_exemption_months: row.feeExemptionMonths ?? 0,
-    fee_exemption_start_date: row.feeExemptionStartDate ?? null,
-    joined_at: row.joinedAt ?? null,
-  };
 }
 
 function toFiscalYear(row: DashboardApiResponse['fiscalYears'][number]): FiscalYear {

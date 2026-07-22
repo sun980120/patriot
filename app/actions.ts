@@ -10,6 +10,15 @@ type ActionResult = {
   message?: string;
 };
 
+type TacticShareActionResult = ActionResult & {
+  shareId?: string;
+};
+
+type TacticProjectActionResult = ActionResult & {
+  projects?: unknown[];
+  project?: unknown;
+};
+
 function refreshHome() {
   revalidatePath('/');
   revalidatePath('/login');
@@ -271,7 +280,6 @@ export async function markNotificationReadAction(notificationId: string): Promis
     return { ok: false, message: result.message ?? '알림 읽음 처리에 실패했습니다.' };
   }
 
-  refreshHome();
   return { ok: true };
 }
 
@@ -284,7 +292,6 @@ export async function markAllNotificationsReadAction(): Promise<ActionResult> {
     return { ok: false, message: result.message ?? '알림 읽음 처리에 실패했습니다.' };
   }
 
-  refreshHome();
   return { ok: true };
 }
 
@@ -297,7 +304,6 @@ export async function deleteNotificationAction(notificationId: string): Promise<
     return { ok: false, message: result.message ?? '알림 삭제에 실패했습니다.' };
   }
 
-  refreshHome();
   return { ok: true, message: result.message ?? '알림을 삭제했습니다.' };
 }
 
@@ -310,7 +316,6 @@ export async function deleteAllNotificationsAction(): Promise<ActionResult> {
     return { ok: false, message: result.message ?? '알림 전체 삭제에 실패했습니다.' };
   }
 
-  refreshHome();
   return { ok: true, message: result.message ?? '모든 알림을 삭제했습니다.' };
 }
 
@@ -638,4 +643,118 @@ export async function sendAdditionalChargeFiscalYearReminderAction(fiscalYearId:
     ok: true,
     message: `${result.data?.message ?? '추가비용 알림을 처리했습니다.'} 앱 알림 ${targetCount}건, 푸시 성공 ${sentCount}건, 실패 ${failedCount}건`,
   };
+}
+
+export async function createTacticShareAction(input: {
+  title: string;
+  snapshot: unknown;
+}): Promise<TacticShareActionResult> {
+  const result = await serverApiFetch<{ publicId: string }>('/api/tactics/shares', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+  if (!result.ok || !result.data?.publicId) {
+    return { ok: false, message: result.message ?? '공유 링크를 만들지 못했습니다.' };
+  }
+
+  return { ok: true, shareId: result.data.publicId };
+}
+
+export async function stopTacticShareAction(publicId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/tactics/shares/${encodeURIComponent(publicId)}`, {
+    method: 'DELETE',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '공유를 중단하지 못했습니다.' };
+  }
+
+  return { ok: true, message: '전술 보드 공유를 중단했습니다.' };
+}
+
+export async function listTacticProjectsAction(): Promise<TacticProjectActionResult> {
+  const result = await serverApiFetch<Array<{ snapshot: unknown }>>('/api/tactics/projects');
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '저장된 전술을 불러오지 못했습니다.' };
+  }
+
+  return {
+    ok: true,
+    projects: result.data?.map((item) => item.snapshot) ?? [],
+  };
+}
+
+export async function listDeletedTacticProjectsAction(): Promise<TacticProjectActionResult> {
+  const result = await serverApiFetch<Array<{ snapshot: unknown }>>('/api/tactics/projects/trash');
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '삭제 보관함을 불러오지 못했습니다.' };
+  }
+
+  return {
+    ok: true,
+    projects: result.data?.map((item) => item.snapshot) ?? [],
+  };
+}
+
+export async function saveTacticProjectAction(input: {
+  projectId: string;
+  title: string;
+  snapshot: unknown;
+}): Promise<TacticProjectActionResult> {
+  const result = await serverApiFetch<{ snapshot: unknown }>(
+    `/api/tactics/projects/${encodeURIComponent(input.projectId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({
+        title: input.title,
+        snapshot: input.snapshot,
+      }),
+    },
+  );
+
+  if (!result.ok || !result.data) {
+    return { ok: false, message: result.message ?? '전술을 저장하지 못했습니다.' };
+  }
+
+  return { ok: true, project: result.data.snapshot };
+}
+
+export async function deleteTacticProjectAction(projectId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/tactics/projects/${encodeURIComponent(projectId)}`, {
+    method: 'DELETE',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '전술을 삭제하지 못했습니다.' };
+  }
+
+  return { ok: true, message: '전술을 삭제 보관함으로 이동했습니다.' };
+}
+
+export async function restoreTacticProjectAction(projectId: string): Promise<TacticProjectActionResult> {
+  const result = await serverApiFetch<{ snapshot: unknown }>(
+    `/api/tactics/projects/${encodeURIComponent(projectId)}/restore`,
+    { method: 'PATCH' },
+  );
+
+  if (!result.ok || !result.data) {
+    return { ok: false, message: result.message ?? '전술을 복구하지 못했습니다.' };
+  }
+
+  return { ok: true, project: result.data.snapshot };
+}
+
+export async function purgeTacticProjectAction(projectId: string): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/tactics/projects/${encodeURIComponent(projectId)}/purge`, {
+    method: 'DELETE',
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '전술을 완전히 삭제하지 못했습니다.' };
+  }
+
+  return { ok: true, message: '전술을 완전히 삭제했습니다.' };
 }

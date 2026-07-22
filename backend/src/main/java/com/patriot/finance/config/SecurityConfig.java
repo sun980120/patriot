@@ -42,6 +42,8 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/api/auth/signup", "/api/auth/login", "/api/auth/refresh").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/tactics/shares").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/tactics/shares/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/years/**", "/api/finance/**", "/api/payments/**", "/api/additional-charges/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/years/**", "/api/finance/**", "/api/additional-charges/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                 .requestMatchers(HttpMethod.PATCH, "/api/payments/**", "/api/additional-charges/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
@@ -74,7 +76,7 @@ public class SecurityConfig {
     CorsConfigurationSource corsConfigurationSource(@Value("${app.cors.allowed-origins}") List<String> allowedOrigins) {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(allowedOrigins);
-        config.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization"));
         config.setAllowCredentials(true);

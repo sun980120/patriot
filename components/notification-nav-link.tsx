@@ -7,25 +7,54 @@ import { usePathname } from 'next/navigation';
 import { Bell } from 'lucide-react';
 import { getNotificationUnreadCountAction } from '@/app/actions';
 
-export function NotificationNavLink({ className = '' }: { className?: string }) {
+type NotificationChangeDetail = {
+  unreadCount?: number;
+};
+
+export function NotificationNavLink({
+  className = '',
+  initialUnreadCount,
+}: {
+  className?: string;
+  initialUnreadCount?: number;
+}) {
   const pathname = usePathname();
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(initialUnreadCount ?? 0);
 
   useEffect(() => {
     let active = true;
-    const refreshUnreadCount = () => getNotificationUnreadCountAction().then((result) => {
+
+    const refreshUnreadCount = async () => {
+      const result = await getNotificationUnreadCountAction();
       if (active && result.ok) {
         setUnreadCount(result.unreadCount ?? 0);
       }
-    });
+    };
 
-    refreshUnreadCount();
-    window.addEventListener('patriot:notifications-changed', refreshUnreadCount);
+    const handleNotificationChange = (event: Event) => {
+      const nextUnreadCount = (event as CustomEvent<NotificationChangeDetail>).detail?.unreadCount;
+      if (typeof nextUnreadCount === 'number') {
+        setUnreadCount(nextUnreadCount);
+        return;
+      }
+
+      void refreshUnreadCount();
+    };
+
+    if (typeof initialUnreadCount === 'number') {
+      setUnreadCount(initialUnreadCount);
+    } else {
+      void refreshUnreadCount();
+    }
+
+    window.addEventListener('patriot:notifications-changed', handleNotificationChange);
+    window.addEventListener('focus', refreshUnreadCount);
     return () => {
       active = false;
-      window.removeEventListener('patriot:notifications-changed', refreshUnreadCount);
+      window.removeEventListener('patriot:notifications-changed', handleNotificationChange);
+      window.removeEventListener('focus', refreshUnreadCount);
     };
-  }, [pathname]);
+  }, [initialUnreadCount]);
 
   const active = pathname === '/notifications';
 

@@ -24,6 +24,11 @@ public class ApiExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, message, request);
     }
 
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNotFound(ResourceNotFoundException exception, HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, exception.getMessage(), request);
+    }
+
     @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
     public ResponseEntity<ApiErrorResponse> handleBadRequest(RuntimeException exception, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, exception.getMessage(), request);

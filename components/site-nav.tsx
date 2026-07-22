@@ -16,6 +16,12 @@ type NavLink = {
   label: string;
 };
 
+type SiteNavProps = {
+  showLogout?: boolean;
+  profile?: Profile | null;
+  initialNotificationUnreadCount?: number;
+};
+
 function buildLinks(profile: Profile | null): NavLink[] {
   if (!profile) {
     return [
@@ -27,6 +33,7 @@ function buildLinks(profile: Profile | null): NavLink[] {
   const adminMode = profile.app_role === 'admin' || profile.app_role === 'super_admin';
   const links: NavLink[] = [
     { href: '/dashboard', label: '통합 대시보드' },
+    { href: '/tactics' as Route, label: '전술 보드' },
     { href: '/account', label: '사용자 정보 변경' },
   ];
 
@@ -38,7 +45,11 @@ function buildLinks(profile: Profile | null): NavLink[] {
   return links;
 }
 
-export function SiteNav({ showLogout = false, profile = null }: { showLogout?: boolean; profile?: Profile | null }) {
+export function SiteNav({
+  showLogout = false,
+  profile = null,
+  initialNotificationUnreadCount,
+}: SiteNavProps) {
   const links = buildLinks(profile);
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -59,7 +70,6 @@ export function SiteNav({ showLogout = false, profile = null }: { showLogout?: b
           {link.label}
         </Link>
       ))}
-      {profile ? <NotificationNavLink className="hidden lg:inline-flex" /> : null}
     </nav>
   );
 
@@ -72,17 +82,23 @@ export function SiteNav({ showLogout = false, profile = null }: { showLogout?: b
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-700">Patriot Club Finance</p>
             <h1 className="mt-1 text-xl font-black text-slate-900">{CLUB_NAME} 회비 관리 서비스</h1>
           </div>
-          <div className="hidden items-center gap-2 text-sm lg:flex">
+          <div className="ml-auto hidden items-center gap-2 text-sm lg:flex">
             {navLinks}
-            {showLogout ? <LogoutButton /> : null}
           </div>
-          <div className="flex shrink-0 items-center gap-2 lg:hidden">
-            {profile ? <NotificationNavLink /> : null}
+          <div className="flex shrink-0 items-center gap-2">
+            {profile ? (
+              <NotificationNavLink initialUnreadCount={initialNotificationUnreadCount} />
+            ) : null}
+            {showLogout ? (
+              <div className="hidden lg:block">
+                <LogoutButton />
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={() => setMobileOpen((current) => !current)}
               aria-label={mobileOpen ? '메뉴 닫기' : '메뉴 열기'}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm lg:hidden"
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>

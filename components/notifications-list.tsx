@@ -3,7 +3,12 @@
 import type { Route } from 'next';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
-import { deleteNotificationAction, markNotificationReadAction } from '@/app/actions';
+import {
+  deleteAllNotificationsAction,
+  deleteNotificationAction,
+  markAllNotificationsReadAction,
+  markNotificationReadAction,
+} from '@/app/actions';
 import type { AppNotification } from '@/lib/notifications-data';
 
 type NotificationTab = 'unread' | 'all';
@@ -28,11 +33,20 @@ function typeLabel(type: AppNotification['type']) {
   return '면제 변경';
 }
 
-export function NotificationsList({ notifications, unreadCount }: { notifications: AppNotification[]; unreadCount: number }) {
+function announceUnreadCount(items: AppNotification[]) {
+  window.dispatchEvent(new CustomEvent('patriot:notifications-changed', {
+    detail: {
+      unreadCount: items.filter((item) => !item.read).length,
+    },
+  }));
+}
+
+export function NotificationsList({ notifications }: { notifications: AppNotification[] }) {
   const router = useRouter();
   const [items, setItems] = useState(notifications);
   const [tab, setTab] = useState<NotificationTab>('unread');
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [bulkPending, setBulkPending] = useState<'read' | 'delete' | null>(null);
   const [, startTransition] = useTransition();
   const currentUnreadCount = items.filter((item) => !item.read).length;
   const visibleNotifications = useMemo(
@@ -47,10 +61,11 @@ export function NotificationsList({ notifications, unreadCount }: { notification
       setPendingId(null);
       if (!result.ok) return;
 
-      setItems((current) => current.map((item) =>
+      const nextItems = items.map((item) =>
         item.id === notificationId ? { ...item, read: true, readAt: new Date().toISOString() } : item
-      ));
-      window.dispatchEvent(new Event('patriot:notifications-changed'));
+      );
+      setItems(nextItems);
+      announceUnreadCount(nextItems);
     });
   };
 
@@ -61,9 +76,9 @@ export function NotificationsList({ notifications, unreadCount }: { notification
       setPendingId(null);
       if (!result.ok) return;
 
-      setItems((current) => current.filter((item) => item.id !== notificationId));
-      window.dispatchEvent(new Event('patriot:notifications-changed'));
-      router.refresh();
+      const nextItems = items.filter((item) => item.id !== notificationId);
+      setItems(nextItems);
+      announceUnreadCount(nextItems);
     });
   };
 
@@ -81,31 +96,80 @@ export function NotificationsList({ notifications, unreadCount }: { notification
       setPendingId(null);
       if (!result.ok) return;
 
-      setItems((current) => current.map((currentItem) =>
+      const nextItems = items.map((currentItem) =>
         currentItem.id === item.id ? { ...currentItem, read: true, readAt: new Date().toISOString() } : currentItem
-      ));
-      window.dispatchEvent(new Event('patriot:notifications-changed'));
+      );
+      setItems(nextItems);
+      announceUnreadCount(nextItems);
       router.push(item.linkUrl as Route);
+    });
+  };
+
+  const markAllRead = () => {
+    setBulkPending('read');
+    startTransition(async () => {
+      const result = await markAllNotificationsReadAction();
+      setBulkPending(null);
+      if (!result.ok) return;
+
+      const readAt = new Date().toISOString();
+      const nextItems = items.map((item) => (
+        item.read ? item : { ...item, read: true, readAt }
+      ));
+      setItems(nextItems);
+      announceUnreadCount(nextItems);
+    });
+  };
+
+  const deleteAll = () => {
+    setBulkPending('delete');
+    startTransition(async () => {
+      const result = await deleteAllNotificationsAction();
+      setBulkPending(null);
+      if (!result.ok) return;
+
+      setItems([]);
+      announceUnreadCount([]);
     });
   };
 
   return (
     <>
-      <div className="mt-5 inline-flex rounded-full bg-slate-100 p-1 text-sm font-bold">
-        <button
-          type="button"
-          onClick={() => setTab('unread')}
-          className={`rounded-full px-4 py-2 transition ${tab === 'unread' ? 'bg-brand-700 text-white' : 'text-slate-600'}`}
-        >
-          미확인 {currentUnreadCount}건
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('all')}
-          className={`rounded-full px-4 py-2 transition ${tab === 'all' ? 'bg-brand-700 text-white' : 'text-slate-600'}`}
-        >
-          전체 {items.length}건
-        </button>
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="inline-flex self-start rounded-full bg-slate-100 p-1 text-sm font-bold">
+          <button
+            type="button"
+            onClick={() => setTab('unread')}
+            className={`rounded-full px-4 py-2 transition ${tab === 'unread' ? 'bg-brand-700 text-white' : 'text-slate-600'}`}
+          >
+            미확인 {currentUnreadCount}건
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('all')}
+            className={`rounded-full px-4 py-2 transition ${tab === 'all' ? 'bg-brand-700 text-white' : 'text-slate-600'}`}
+          >
+            전체 {items.length}건
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={markAllRead}
+            disabled={currentUnreadCount === 0 || bulkPending !== null}
+            className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+          >
+            {bulkPending === 'read' ? '처리 중' : '모두 읽음 처리'}
+          </button>
+          <button
+            type="button"
+            onClick={deleteAll}
+            disabled={items.length === 0 || bulkPending !== null}
+            className="rounded-2xl border border-rose-200 bg-white px-5 py-3 text-sm font-bold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-300"
+          >
+            {bulkPending === 'delete' ? '삭제 중' : '전체 삭제'}
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 space-y-3">
