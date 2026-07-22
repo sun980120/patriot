@@ -91,6 +91,11 @@ const emptyToast: ToastState = {
   tone: 'info',
 };
 
+function isIphoneUserAgent() {
+  if (typeof navigator === 'undefined') return false;
+  return /iPhone|iPod/i.test(navigator.userAgent);
+}
+
 function copyProject(project: TacticProject): TacticProject {
   return {
     ...project,
@@ -158,6 +163,11 @@ export function TacticsEditor({ userName }: { userName: string }) {
   const fullscreenRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
+  const [isIphoneDevice, setIsIphoneDevice] = useState(false);
+
+  useEffect(() => {
+    setIsIphoneDevice(isIphoneUserAgent());
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -234,6 +244,40 @@ export function TacticsEditor({ userName }: { userName: string }) {
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isBoardFullscreen) return;
+
+    const target = fullscreenRef.current;
+    if (!target) return;
+    const targetElement = target;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousDocumentOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    function updateFullscreenViewport() {
+      const viewport = window.visualViewport;
+      targetElement.style.setProperty('--tactics-fullscreen-width', `${viewport?.width ?? window.innerWidth}px`);
+      targetElement.style.setProperty('--tactics-fullscreen-height', `${viewport?.height ?? window.innerHeight}px`);
+    }
+
+    updateFullscreenViewport();
+    window.addEventListener('resize', updateFullscreenViewport);
+    window.addEventListener('orientationchange', updateFullscreenViewport);
+    window.visualViewport?.addEventListener('resize', updateFullscreenViewport);
+
+    return () => {
+      window.removeEventListener('resize', updateFullscreenViewport);
+      window.removeEventListener('orientationchange', updateFullscreenViewport);
+      window.visualViewport?.removeEventListener('resize', updateFullscreenViewport);
+      targetElement.style.removeProperty('--tactics-fullscreen-width');
+      targetElement.style.removeProperty('--tactics-fullscreen-height');
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousDocumentOverflow;
+    };
+  }, [isBoardFullscreen]);
 
   const currentScene = useMemo(() => {
     if (!project) return null;
@@ -764,24 +808,36 @@ export function TacticsEditor({ userName }: { userName: string }) {
     const target = fullscreenRef.current as FullscreenTarget | null;
     if (!target) return;
 
-    try {
-      if (isBoardFullscreen) {
-        const fullscreenDocument = document as FullscreenDocument;
-        if (document.exitFullscreen) {
+    const fullscreenDocument = document as FullscreenDocument;
+    const nativeFullscreenElement =
+      document.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement ?? null;
+
+    if (isBoardFullscreen) {
+      try {
+        if (nativeFullscreenElement && document.exitFullscreen) {
           await document.exitFullscreen();
-        } else {
+        } else if (nativeFullscreenElement && fullscreenDocument.webkitExitFullscreen) {
           await fullscreenDocument.webkitExitFullscreen?.();
         }
-        return;
+      } finally {
+        setIsBoardFullscreen(false);
+        screen.orientation?.unlock?.();
       }
+      return;
+    }
 
+    if (isIphoneDevice) {
+      showToast('전체화면 편집을 지원하지 않습니다. 일반 화면에서 편집해 주세요.', 'info');
+      return;
+    }
+
+    setIsBoardFullscreen(true);
+
+    try {
       if (target.requestFullscreen) {
         await target.requestFullscreen();
       } else if (target.webkitRequestFullscreen) {
         await target.webkitRequestFullscreen();
-      } else {
-        showToast('이 브라우저는 전체화면 편집을 지원하지 않습니다.', 'error');
-        return;
       }
 
       try {
@@ -790,7 +846,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
         showToast('전체화면으로 전환했습니다. 화면 회전 잠금은 브라우저 정책상 지원되지 않을 수 있습니다.', 'info');
       }
     } catch {
-      showToast('전체화면으로 전환하지 못했습니다. 브라우저 권한 또는 기기 설정을 확인해 주세요.', 'error');
+      showToast('전체화면 편집 모드로 전환했습니다. 기기를 가로로 돌려 사용해 주세요.', 'info');
     }
   }
 
@@ -995,21 +1051,22 @@ export function TacticsEditor({ userName }: { userName: string }) {
 
           <div
             ref={fullscreenRef}
-            className={`relative touch-none select-none overscroll-contain overflow-hidden border border-sky-200/20 bg-sky-950/30 shadow-inner ${
+            className={`relative touch-none select-none overscroll-contain overflow-hidden border border-sky-200/20 shadow-inner ${
               isBoardFullscreen
-                ? 'flex h-screen w-screen items-start justify-center rounded-none px-28 pb-16 pt-3 sm:px-32 sm:pb-16 sm:pt-5'
-                : 'rounded-[22px] p-1.5 sm:rounded-[30px] sm:p-3'
+                ? 'fixed inset-0 z-[9999] flex h-[var(--tactics-fullscreen-height,100svh)] w-[var(--tactics-fullscreen-width,100vw)] items-start justify-center rounded-none bg-slate-950 px-28 pb-16 pt-3 sm:px-32 sm:pb-16 sm:pt-5'
+                : 'rounded-[22px] bg-sky-950/30 p-1.5 sm:rounded-[30px] sm:p-3'
             }`}
           >
             <button
               type="button"
               onClick={toggleBoardFullscreen}
-              className="absolute right-3 top-3 z-20 inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-slate-950/70 px-3 text-sm font-black text-white shadow-lg backdrop-blur transition hover:bg-slate-900"
+              aria-label={isBoardFullscreen ? '전체화면 종료' : '가로 전체화면'}
+              title={isBoardFullscreen ? '전체화면 종료' : '가로 전체화면'}
+              className="absolute right-3 top-3 z-20 inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/15 bg-slate-950/70 text-white shadow-lg backdrop-blur transition hover:bg-slate-900"
             >
               {isBoardFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-              {isBoardFullscreen ? '전체화면 종료' : '가로 전체화면'}
             </button>
-            <div className={isBoardFullscreen ? 'w-full [&>svg]:mx-auto [&>svg]:max-h-[calc(100vh-5rem)] [&>svg]:w-full' : 'w-full'}>
+            <div className={isBoardFullscreen ? 'w-full [&>svg]:mx-auto [&>svg]:max-h-[calc(var(--tactics-fullscreen-height,100dvh)-5rem)] [&>svg]:w-full' : 'w-full'}>
               <RinkCanvas
                 svgRef={svgRef}
                 objects={displayObjects}
