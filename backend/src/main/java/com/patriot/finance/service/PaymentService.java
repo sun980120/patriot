@@ -26,6 +26,7 @@ public class PaymentService {
     private final MembershipPaymentRepository paymentRepository;
     private final FiscalYearRepository fiscalYearRepository;
     private final MemberRepository memberRepository;
+    private final AuditLogService auditLogService;
 
     public List<PaymentResponse> findByFiscalYear(UUID fiscalYearId) {
         return paymentRepository.findByFiscalYearId(fiscalYearId).stream()
@@ -63,7 +64,15 @@ public class PaymentService {
         MemberGrade appliedGrade = member.getMemberGrade();
         int amount = feeFor(appliedGrade);
         payment.toggle(nextPaid, amount, appliedGrade);
-        return toResponse(paymentRepository.save(payment));
+        MembershipPayment savedPayment = paymentRepository.save(payment);
+        auditLogService.record(
+            nextPaid ? "MONTHLY_PAYMENT_MARKED_PAID" : "MONTHLY_PAYMENT_MARKED_UNPAID",
+            "MEMBERSHIP_PAYMENT",
+            savedPayment.getId(),
+            member.getFullName(),
+            fiscalYear.getYear() + "년 " + request.month() + "월 회비를 " + (nextPaid ? "납부 완료" : "미납") + " 처리했습니다."
+        );
+        return toResponse(savedPayment);
     }
 
     @Transactional
@@ -93,7 +102,16 @@ public class PaymentService {
             payment.clearManualExemption(member.getMemberGrade());
         }
 
-        return toResponse(paymentRepository.save(payment));
+        MembershipPayment savedPayment = paymentRepository.save(payment);
+        auditLogService.record(
+            request.exempt() ? "MONTHLY_PAYMENT_MANUAL_EXEMPTED" : "MONTHLY_PAYMENT_MANUAL_EXEMPTION_CLEARED",
+            "MEMBERSHIP_PAYMENT",
+            savedPayment.getId(),
+            member.getFullName(),
+            fiscalYear.getYear() + "년 " + request.month() + "월 회비 수동 면제를 "
+                + (request.exempt() ? "적용했습니다." : "해제했습니다.")
+        );
+        return toResponse(savedPayment);
     }
 
     private PaymentResponse toResponse(MembershipPayment payment) {

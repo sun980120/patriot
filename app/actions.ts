@@ -27,6 +27,7 @@ function refreshHome() {
   revalidatePath('/member');
   revalidatePath('/admin/members');
   revalidatePath('/admin/finance');
+  revalidatePath('/admin/audit-logs');
   revalidatePath('/notifications');
 }
 

@@ -93,6 +93,18 @@ export type ChargeGroup = {
   participant_charges: ParticipantCharge[];
 };
 
+export type AuditLog = {
+  id: string;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  target_name: string | null;
+  actor_id: string | null;
+  actor_name: string | null;
+  detail: string | null;
+  created_at: string | null;
+};
+
 export type DashboardBundle = {
   profile: Profile | null;
   fiscalYears: FiscalYear[];
