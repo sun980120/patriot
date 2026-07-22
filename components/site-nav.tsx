@@ -40,6 +40,7 @@ function buildLinks(profile: Profile | null): NavLink[] {
   if (adminMode) {
     links.push({ href: '/admin/members', label: '회원 관리' });
     links.push({ href: '/admin/finance', label: '세입/지출 관리' });
+    links.push({ href: '/admin/audit-logs' as Route, label: '감사 로그' });
   }
 
   return links;
