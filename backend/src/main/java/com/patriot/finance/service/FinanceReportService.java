@@ -33,7 +33,7 @@ import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,7 +68,9 @@ public class FinanceReportService {
     public byte[] exportFiscalYearXlsx(UUID fiscalYearId) {
         ReportData report = loadReportData(fiscalYearId);
 
-        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+        SXSSFWorkbook workbook = new SXSSFWorkbook(200);
+        workbook.setCompressTempFiles(true);
+        try (workbook; ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             CellStyle headerStyle = workbook.createCellStyle();
             Font headerFont = workbook.createFont();
             headerFont.setBold(true);
@@ -88,6 +90,8 @@ public class FinanceReportService {
             return outputStream.toByteArray();
         } catch (IOException exception) {
             throw new IllegalStateException("재정 리포트 Excel 파일을 생성하지 못했습니다.", exception);
+        } finally {
+            workbook.dispose();
         }
     }
 
@@ -214,7 +218,7 @@ public class FinanceReportService {
         writeSheetRow(sheet, 6, moneyStyle, "추가 비용 납부 합계", report.additionalChargePaidTotal());
         writeSheetRow(sheet, 7, moneyStyle, "추가 비용 미납 합계", report.additionalChargeUnpaidTotal());
         writeSheetRow(sheet, 8, moneyStyle, "기타 세입 - 지출", report.manualIncomeTotal() - report.expenseTotal());
-        autoSize(sheet, 2);
+        setColumnWidths(sheet, 18, 18);
     }
 
     private void writeIncomeSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, List<IncomeEntry> incomes) {
@@ -233,7 +237,7 @@ public class FinanceReportService {
                 entry.getChargeGroup() == null ? null : entry.getChargeGroup().getId()
             );
         }
-        autoSize(sheet, 5);
+        setColumnWidths(sheet, 22, 24, 14, 34, 40);
     }
 
     private void writeExpenseSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, List<ExpenseEntry> expenses) {
@@ -252,7 +256,7 @@ public class FinanceReportService {
                 entry.getChargeGroup() == null ? null : entry.getChargeGroup().getId()
             );
         }
-        autoSize(sheet, 5);
+        setColumnWidths(sheet, 22, 24, 14, 34, 40);
     }
 
     private void writeMonthlyPaymentSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, ReportData report) {
@@ -275,7 +279,7 @@ public class FinanceReportService {
                 writeSheetRow(sheet, rowIndex++, moneyStyle, member.getFullName(), member.getUsername(), month, status, amount, grade, reason);
             }
         }
-        autoSize(sheet, 7);
+        setColumnWidths(sheet, 16, 18, 10, 18, 14, 14, 34);
     }
 
     private void writeAdditionalChargeSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, List<MemberCharge> charges) {
@@ -300,7 +304,7 @@ public class FinanceReportService {
                 charge.getMemo()
             );
         }
-        autoSize(sheet, 11);
+        setColumnWidths(sheet, 24, 16, 16, 16, 18, 14, 14, 14, 28, 22, 34);
     }
 
     private void writeHeader(Sheet sheet, CellStyle headerStyle, String... values) {
@@ -326,9 +330,9 @@ public class FinanceReportService {
         }
     }
 
-    private void autoSize(Sheet sheet, int columns) {
-        for (int index = 0; index < columns; index++) {
-            sheet.autoSizeColumn(index);
+    private void setColumnWidths(Sheet sheet, int... widths) {
+        for (int index = 0; index < widths.length; index++) {
+            sheet.setColumnWidth(index, widths[index] * 256);
         }
     }
 
