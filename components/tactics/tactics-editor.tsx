@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  Download,
   FolderOpen,
   Link2,
   Maximize2,
@@ -33,8 +32,6 @@ import { SceneTimeline } from '@/components/tactics/scene-timeline';
 import { TacticsToolbar } from '@/components/tactics/tactics-toolbar';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 import {
-  RINK_HEIGHT,
-  RINK_WIDTH,
   TACTICS_LIBRARY_KEY,
   TACTIC_BOARD_OPTIONS,
   cloneObjects,
@@ -45,7 +42,6 @@ import {
   interpolateObjects,
   isTacticProject,
   parseTacticsLibrary,
-  sanitizeFileName,
   type TacticObject,
   type TacticPath,
   type TacticPathKind,
@@ -802,56 +798,6 @@ export function TacticsEditor({ userName }: { userName: string }) {
     });
   }
 
-  async function exportPng() {
-    if (!project || !svgRef.current) return;
-
-    try {
-      const clonedSvg = svgRef.current.cloneNode(true) as SVGSVGElement;
-      clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-      clonedSvg.setAttribute('width', String(RINK_WIDTH * 2));
-      clonedSvg.setAttribute('height', String(RINK_HEIGHT * 2));
-
-      const serialized = new XMLSerializer().serializeToString(clonedSvg);
-      const svgBlob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
-      const svgUrl = URL.createObjectURL(svgBlob);
-      const image = new Image();
-
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error('SVG 이미지를 읽지 못했습니다.'));
-        image.src = svgUrl;
-      });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = RINK_WIDTH * 2;
-      canvas.height = RINK_HEIGHT * 2;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('이미지 캔버스를 생성하지 못했습니다.');
-
-      context.fillStyle = '#e0f2fe';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(svgUrl);
-
-      const pngBlob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('PNG 파일을 생성하지 못했습니다.'));
-        }, 'image/png');
-      });
-
-      const downloadUrl = URL.createObjectURL(pngBlob);
-      const anchor = document.createElement('a');
-      anchor.href = downloadUrl;
-      anchor.download = `${sanitizeFileName(project.title)}.png`;
-      anchor.click();
-      URL.revokeObjectURL(downloadUrl);
-      showToast('현재 장면을 PNG 이미지로 저장했습니다.');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'PNG 저장에 실패했습니다.', 'error');
-    }
-  }
-
   async function toggleBoardFullscreen() {
     const target = fullscreenRef.current as FullscreenTarget | null;
     if (!target) return;
@@ -1037,7 +983,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
                 })}
               </div>
             </fieldset>
-            <div className="grid grid-cols-4 gap-1.5 sm:gap-2 lg:flex lg:justify-end">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 lg:flex lg:justify-end">
               <button
                 type="button"
                 onClick={isPlaying ? stopPlayback : playProject}
@@ -1070,15 +1016,6 @@ export function TacticsEditor({ userName }: { userName: string }) {
                 <UsersRound className="h-4 w-4" />
                 공유 게시판
               </Link>
-              <button
-                type="button"
-                disabled={isPlaying}
-                onClick={exportPng}
-                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-xl bg-white px-2 text-xs font-black text-slate-900 transition hover:bg-slate-100 disabled:opacity-50 sm:min-h-11 sm:gap-2 sm:rounded-2xl sm:px-4 sm:text-sm"
-              >
-                <Download className="h-4 w-4" />
-                PNG 저장
-              </button>
             </div>
           </div>
 
