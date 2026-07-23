@@ -33,6 +33,7 @@ function buildLinks(profile: Profile | null): NavLink[] {
   const adminMode = profile.app_role === 'admin' || profile.app_role === 'super_admin';
   const links: NavLink[] = [
     { href: '/dashboard', label: '통합 대시보드' },
+    { href: '/calendar' as Route, label: '캘린더' },
     { href: '/tactics' as Route, label: '전술 보드' },
     { href: '/account', label: '사용자 정보 변경' },
   ];

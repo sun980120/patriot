@@ -1,6 +1,7 @@
 package com.patriot.finance.service;
 
 import com.patriot.finance.domain.entity.ChargeGroup;
+import com.patriot.finance.domain.entity.ClubEvent;
 import com.patriot.finance.domain.entity.ExpenseEntry;
 import com.patriot.finance.domain.entity.FiscalYear;
 import com.patriot.finance.domain.entity.IncomeEntry;
@@ -12,6 +13,7 @@ import com.patriot.finance.dto.ChargeGroupResponse;
 import com.patriot.finance.dto.CreateChargeGroupRequest;
 import com.patriot.finance.dto.MemberChargeResponse;
 import com.patriot.finance.repository.ChargeGroupRepository;
+import com.patriot.finance.repository.ClubEventRepository;
 import com.patriot.finance.repository.ExpenseEntryRepository;
 import com.patriot.finance.repository.FiscalYearRepository;
 import com.patriot.finance.repository.IncomeEntryRepository;
@@ -32,6 +34,7 @@ public class AdditionalChargeService {
     private final FiscalYearRepository fiscalYearRepository;
     private final MemberRepository memberRepository;
     private final ChargeGroupRepository chargeGroupRepository;
+    private final ClubEventRepository clubEventRepository;
     private final MemberChargeRepository memberChargeRepository;
     private final ExpenseEntryRepository expenseEntryRepository;
     private final IncomeEntryRepository incomeEntryRepository;
@@ -48,6 +51,10 @@ public class AdditionalChargeService {
     public ChargeGroupResponse createChargeGroup(CreateChargeGroupRequest request) {
         FiscalYear fiscalYear = fiscalYearRepository.findById(request.fiscalYearId())
             .orElseThrow(() -> new IllegalArgumentException("연도를 찾을 수 없습니다."));
+        ClubEvent clubEvent = request.clubEventId() == null
+            ? null
+            : clubEventRepository.findById(request.clubEventId())
+                .orElseThrow(() -> new IllegalArgumentException("이벤트를 찾을 수 없습니다."));
 
         List<Member> participants = memberRepository.findAllById(request.participantMemberIds()).stream()
             .filter(member -> member.getApprovalStatus() == ApprovalStatus.APPROVED)
@@ -60,6 +67,7 @@ public class AdditionalChargeService {
 
         ChargeGroup chargeGroup = chargeGroupRepository.save(ChargeGroup.builder()
             .fiscalYear(fiscalYear)
+            .clubEvent(clubEvent)
             .title(request.title().trim())
             .category(request.category())
             .eventDate(request.eventDate())
@@ -251,6 +259,8 @@ public class AdditionalChargeService {
         return new ChargeGroupResponse(
             group.getId(),
             group.getFiscalYear().getId(),
+            group.getClubEvent() == null ? null : group.getClubEvent().getId(),
+            group.getClubEvent() == null ? null : group.getClubEvent().getTitle(),
             group.getTitle(),
             group.getCategory(),
             group.getEventDate(),

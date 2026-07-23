@@ -314,6 +314,8 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
     const optimisticGroup: ChargeGroup = {
       id: optimisticGroupId,
       fiscal_year_id: selectedYear.id,
+      club_event_id: null,
+      club_event_title: null,
       title,
       category: chargeForm.category,
       event_date: chargeForm.eventDate || null,

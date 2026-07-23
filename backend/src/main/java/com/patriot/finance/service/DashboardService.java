@@ -187,6 +187,8 @@ public class DashboardService {
         return new ChargeGroupResponse(
             group.getId(),
             group.getFiscalYear().getId(),
+            group.getClubEvent() == null ? null : group.getClubEvent().getId(),
+            group.getClubEvent() == null ? null : group.getClubEvent().getTitle(),
             group.getTitle(),
             group.getCategory(),
             group.getEventDate(),
