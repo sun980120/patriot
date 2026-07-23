@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   createClubEventAction,
@@ -93,6 +93,7 @@ type CalendarOccurrence = {
 };
 
 const today = new Date();
+const PANEL_ANIMATION_MS = 300;
 
 const emptyForm: ScheduleForm = {
   id: null,
@@ -113,10 +114,13 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
   const [monthCursor, setMonthCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [form, setForm] = useState<ScheduleForm>(emptyForm);
   const [selectedDate, setSelectedDate] = useState(toDateInput(today));
+  const [showSelectedDatePanel, setShowSelectedDatePanel] = useState(false);
+  const [renderSelectedDatePanel, setRenderSelectedDatePanel] = useState(false);
   const [selectedOccurrenceKey, setSelectedOccurrenceKey] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
+  const panelAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const calendarDays = useMemo(() => buildCalendarDays(monthCursor), [monthCursor]);
   const calendarStart = calendarDays[0] ?? new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
@@ -137,12 +141,62 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
     setForm((current) => ({ ...current, ...patch }));
   };
 
+  useEffect(() => {
+    return () => {
+      if (panelAnimationTimeoutRef.current) {
+        clearTimeout(panelAnimationTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const openSelectedDatePanel = () => {
+    if (panelAnimationTimeoutRef.current) {
+      clearTimeout(panelAnimationTimeoutRef.current);
+    }
+    setRenderSelectedDatePanel(true);
+    requestAnimationFrame(() => setShowSelectedDatePanel(true));
+  };
+
+  const closeSelectedDatePanel = () => {
+    if (panelAnimationTimeoutRef.current) {
+      clearTimeout(panelAnimationTimeoutRef.current);
+    }
+    setShowSelectedDatePanel(false);
+    setSelectedOccurrenceKey(null);
+    panelAnimationTimeoutRef.current = setTimeout(() => {
+      setRenderSelectedDatePanel(false);
+    }, PANEL_ANIMATION_MS);
+  };
+
   const moveMonth = (delta: number) => {
-    setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
+    setMonthCursor((current) => {
+      const next = new Date(current.getFullYear(), current.getMonth() + delta, 1);
+      if (renderSelectedDatePanel) {
+        const selectedDay = Number(selectedDate.split('-')[2]);
+        const lastDayOfNextMonth = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+        if (selectedDay <= lastDayOfNextMonth) {
+          const nextSelectedDate = toDateInput(new Date(next.getFullYear(), next.getMonth(), selectedDay));
+          setSelectedDate(nextSelectedDate);
+          setSelectedOccurrenceKey(null);
+          openSelectedDatePanel();
+          if (!form.id && canManage) {
+            updateForm({ startDate: nextSelectedDate, endDate: nextSelectedDate });
+          }
+        } else {
+          closeSelectedDatePanel();
+        }
+      }
+      return next;
+    });
   };
 
   const selectDate = (date: string) => {
+    if (selectedDate === date && showSelectedDatePanel) {
+      closeSelectedDatePanel();
+      return;
+    }
     setSelectedDate(date);
+    openSelectedDatePanel();
     setSelectedOccurrenceKey(null);
     if (!form.id && canManage) {
       updateForm({ startDate: date, endDate: date });
@@ -151,6 +205,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
 
   const selectOccurrence = (occurrence: CalendarOccurrence) => {
     setSelectedDate(occurrence.date);
+    openSelectedDatePanel();
     setSelectedOccurrenceKey(occurrenceKey(occurrence));
   };
 
@@ -227,6 +282,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
       setMessage(result.message ?? (result.ok ? '일정이 저장되었습니다.' : '일정 저장에 실패했습니다.'));
       if (result.ok) {
         setForm({ ...emptyForm, startDate: form.startDate, endDate: form.startDate });
+        openSelectedDatePanel();
         router.refresh();
       }
     });
@@ -250,7 +306,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
       <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
       <div className="space-y-8">
         <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Calendar</p>
               <h2 className="mt-2 text-3xl font-black text-slate-900">캘린더</h2>
@@ -258,18 +314,26 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                 {canManage ? '일정을 등록하고 월간 캘린더에서 확인합니다.' : '동호회 일정을 월간 캘린더에서 확인합니다.'}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => moveMonth(-1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">이전</button>
-              <span className="min-w-32 text-center text-lg font-black text-slate-900">{monthCursor.getFullYear()}년 {monthCursor.getMonth() + 1}월</span>
-              <button type="button" onClick={() => moveMonth(1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">다음</button>
-            </div>
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
-              <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black text-slate-500">
-                {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
-                  <div key={day} className="px-2 py-3">{day}</div>
+          <div className="mt-3 flex items-center justify-center gap-4">
+            <button type="button" onClick={() => moveMonth(-1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">이전</button>
+            <span className="min-w-36 text-center text-lg font-black text-slate-900">{monthCursor.getFullYear()}년 {monthCursor.getMonth() + 1}월</span>
+            <button type="button" onClick={() => moveMonth(1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">다음</button>
+          </div>
+
+          <div
+            className="calendar-layout-grid mt-4 grid gap-4"
+            style={{
+              '--calendar-layout-columns': showSelectedDatePanel
+                ? 'minmax(0, 1.25fr) minmax(0, 0.75fr)'
+                : 'minmax(0, 1fr) minmax(0, 0fr)',
+            } as CSSProperties}
+          >
+            <div key={`${monthCursor.getFullYear()}-${monthCursor.getMonth()}`} className="calendar-month-transition overflow-hidden rounded-3xl border border-slate-200 bg-white">
+              <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black">
+                {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
+                  <div key={day} className={`px-2 py-3 ${weekendTextClass(index)}`}>{day}</div>
                 ))}
               </div>
               <div className="grid grid-cols-7">
@@ -290,9 +354,9 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                           selectDate(date);
                         }
                       }}
-                      className={`min-h-28 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
+                      className={`min-h-28 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected && showSelectedDatePanel ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
                     >
-                      <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected ? 'bg-brand-700 text-white' : 'text-slate-800'}`}>
+                      <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected && showSelectedDatePanel ? 'bg-brand-700 text-white' : weekendTextClass(day.getDay())}`}>
                         {day.getDate()}
                       </span>
                       <div className="mt-2 space-y-1">
@@ -321,7 +385,49 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
               </div>
             </div>
 
-            <div className="space-y-4">
+            {renderSelectedDatePanel ? (
+              <div className="relative min-h-0">
+                <div
+                  aria-hidden={!showSelectedDatePanel}
+                  className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out lg:absolute lg:left-0 lg:right-0 lg:top-0 ${
+                    showSelectedDatePanel
+                      ? 'max-h-[1600px] opacity-100 translate-x-0'
+                      : 'max-h-0 opacity-0 translate-x-4 pointer-events-none lg:max-h-[1600px]'
+                  }`}
+                >
+                <div className="space-y-4">
+              <section className="rounded-3xl border border-slate-200 bg-white p-4">
+                <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
+                <div className="mt-3">
+                  {selectedOccurrences.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm font-semibold text-slate-500">등록된 일정이 없습니다.</div>
+                  ) : (
+                    <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+                      {selectedOccurrences.map((occurrence) => (
+                        <button
+                          type="button"
+                          key={occurrenceKey(occurrence)}
+                          onClick={() => selectOccurrence(occurrence)}
+                          className={`min-w-[240px] snap-start rounded-2xl border p-4 text-left transition sm:min-w-[280px] ${
+                            selectedOccurrenceKey === occurrenceKey(occurrence)
+                              ? TYPE_STYLES[occurrence.event.type].listSelected
+                              : TYPE_STYLES[occurrence.event.type].list
+                          }`}
+                        >
+                          <p className="truncate text-base font-black text-slate-900">{occurrence.event.title}</p>
+                          <p className="mt-2 text-sm font-bold text-slate-500">{formatOccurrenceTime(occurrence)}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+              <ScheduleDetailPanel
+                occurrence={selectedOccurrence}
+                canManage={canManage}
+                onEdit={editEvent}
+                onDelete={(eventId, mode, occurrenceStartDate) => removeEvent(eventId, mode, occurrenceStartDate)}
+              />
               {canManage ? (
                 <ScheduleFormPanel
                   form={form}
@@ -331,35 +437,10 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                   onCancel={() => setForm({ ...emptyForm, startDate: selectedDate, endDate: selectedDate })}
                 />
               ) : null}
-              <section className="rounded-3xl border border-slate-200 bg-white p-4">
-                <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
-                <div className="mt-3 space-y-2">
-                  {selectedOccurrences.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm font-semibold text-slate-500">등록된 일정이 없습니다.</div>
-                  ) : selectedOccurrences.map((occurrence) => (
-                    <button
-                      type="button"
-                      key={occurrenceKey(occurrence)}
-                      onClick={() => selectOccurrence(occurrence)}
-                      className={`w-full rounded-2xl border p-3 text-left transition ${
-                        selectedOccurrenceKey === occurrenceKey(occurrence)
-                          ? TYPE_STYLES[occurrence.event.type].listSelected
-                          : TYPE_STYLES[occurrence.event.type].list
-                      }`}
-                    >
-                      <p className="truncate text-sm font-black text-slate-900">{occurrence.event.title}</p>
-                      <p className="mt-1 text-xs font-bold text-slate-500">{formatOccurrenceTime(occurrence)}</p>
-                    </button>
-                  ))}
                 </div>
-              </section>
-              <ScheduleDetailPanel
-                occurrence={selectedOccurrence}
-                canManage={canManage}
-                onEdit={editEvent}
-                onDelete={(eventId, mode, occurrenceStartDate) => removeEvent(eventId, mode, occurrenceStartDate)}
-              />
-            </div>
+              </div>
+              </div>
+            ) : null}
           </div>
         </section>
       </div>
@@ -534,6 +615,12 @@ function buildCalendarDays(cursor: Date) {
     date.setDate(start.getDate() + index);
     return date;
   });
+}
+
+function weekendTextClass(dayOfWeek: number) {
+  if (dayOfWeek === 0) return 'text-rose-600';
+  if (dayOfWeek === 6) return 'text-blue-600';
+  return 'text-slate-800';
 }
 
 function expandOccurrences(events: ClubEvent[], monthStart: Date, monthEnd: Date) {
