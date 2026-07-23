@@ -19,7 +19,7 @@ export default async function CalendarPage() {
     profileData.profile.member_grade === '간사';
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main className="mx-auto max-w-[1800px] px-4 py-8 sm:px-6 lg:px-8">
       <SiteNav showLogout profile={profileData.profile} />
       {eventResult.ok ? (
         <EventManagement events={eventResult.events} canManage={canManage} />
