@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   createClubEventAction,
@@ -93,6 +93,7 @@ type CalendarOccurrence = {
 };
 
 const today = new Date();
+const PANEL_ANIMATION_MS = 300;
 
 const emptyForm: ScheduleForm = {
   id: null,
@@ -114,10 +115,12 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
   const [form, setForm] = useState<ScheduleForm>(emptyForm);
   const [selectedDate, setSelectedDate] = useState(toDateInput(today));
   const [showSelectedDatePanel, setShowSelectedDatePanel] = useState(false);
+  const [renderSelectedDatePanel, setRenderSelectedDatePanel] = useState(false);
   const [selectedOccurrenceKey, setSelectedOccurrenceKey] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
+  const panelAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const calendarDays = useMemo(() => buildCalendarDays(monthCursor), [monthCursor]);
   const calendarStart = calendarDays[0] ?? new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
@@ -138,18 +141,62 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
     setForm((current) => ({ ...current, ...patch }));
   };
 
+  useEffect(() => {
+    return () => {
+      if (panelAnimationTimeoutRef.current) {
+        clearTimeout(panelAnimationTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const openSelectedDatePanel = () => {
+    if (panelAnimationTimeoutRef.current) {
+      clearTimeout(panelAnimationTimeoutRef.current);
+    }
+    setRenderSelectedDatePanel(true);
+    requestAnimationFrame(() => setShowSelectedDatePanel(true));
+  };
+
+  const closeSelectedDatePanel = () => {
+    if (panelAnimationTimeoutRef.current) {
+      clearTimeout(panelAnimationTimeoutRef.current);
+    }
+    setShowSelectedDatePanel(false);
+    setSelectedOccurrenceKey(null);
+    panelAnimationTimeoutRef.current = setTimeout(() => {
+      setRenderSelectedDatePanel(false);
+    }, PANEL_ANIMATION_MS);
+  };
+
   const moveMonth = (delta: number) => {
-    setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
+    setMonthCursor((current) => {
+      const next = new Date(current.getFullYear(), current.getMonth() + delta, 1);
+      if (renderSelectedDatePanel) {
+        const selectedDay = Number(selectedDate.split('-')[2]);
+        const lastDayOfNextMonth = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+        if (selectedDay <= lastDayOfNextMonth) {
+          const nextSelectedDate = toDateInput(new Date(next.getFullYear(), next.getMonth(), selectedDay));
+          setSelectedDate(nextSelectedDate);
+          setSelectedOccurrenceKey(null);
+          openSelectedDatePanel();
+          if (!form.id && canManage) {
+            updateForm({ startDate: nextSelectedDate, endDate: nextSelectedDate });
+          }
+        } else {
+          closeSelectedDatePanel();
+        }
+      }
+      return next;
+    });
   };
 
   const selectDate = (date: string) => {
     if (selectedDate === date && showSelectedDatePanel) {
-      setShowSelectedDatePanel(false);
-      setSelectedOccurrenceKey(null);
+      closeSelectedDatePanel();
       return;
     }
     setSelectedDate(date);
-    setShowSelectedDatePanel(true);
+    openSelectedDatePanel();
     setSelectedOccurrenceKey(null);
     if (!form.id && canManage) {
       updateForm({ startDate: date, endDate: date });
@@ -158,7 +205,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
 
   const selectOccurrence = (occurrence: CalendarOccurrence) => {
     setSelectedDate(occurrence.date);
-    setShowSelectedDatePanel(true);
+    openSelectedDatePanel();
     setSelectedOccurrenceKey(occurrenceKey(occurrence));
   };
 
@@ -235,7 +282,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
       setMessage(result.message ?? (result.ok ? '일정이 저장되었습니다.' : '일정 저장에 실패했습니다.'));
       if (result.ok) {
         setForm({ ...emptyForm, startDate: form.startDate, endDate: form.startDate });
-        setShowSelectedDatePanel(true);
+        openSelectedDatePanel();
         router.refresh();
       }
     });
@@ -275,7 +322,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
             <button type="button" onClick={() => moveMonth(1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">다음</button>
           </div>
 
-          <div className={`mt-4 grid gap-4 transition-all duration-300 ease-out ${showSelectedDatePanel ? 'lg:grid-cols-[1.25fr_0.75fr]' : 'lg:grid-cols-1'}`}>
+          <div className={`mt-4 grid gap-4 transition-all duration-300 ease-out ${renderSelectedDatePanel ? 'lg:grid-cols-[1.25fr_0.75fr]' : 'lg:grid-cols-1'}`}>
             <div key={`${monthCursor.getFullYear()}-${monthCursor.getMonth()}`} className="calendar-month-transition overflow-hidden rounded-3xl border border-slate-200 bg-white">
               <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black">
                 {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
@@ -331,15 +378,16 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
               </div>
             </div>
 
-            <div
-              aria-hidden={!showSelectedDatePanel}
-              className={`overflow-hidden transition-all duration-300 ease-out ${
-                showSelectedDatePanel
-                  ? 'max-h-[1600px] opacity-100 translate-x-0'
-                  : 'max-h-0 opacity-0 translate-x-4 pointer-events-none'
-              }`}
-            >
-              <div className="space-y-4">
+            {renderSelectedDatePanel ? (
+              <div
+                aria-hidden={!showSelectedDatePanel}
+                className={`overflow-hidden transition-all duration-300 ease-out ${
+                  showSelectedDatePanel
+                    ? 'max-h-[1600px] opacity-100 translate-x-0'
+                    : 'max-h-0 opacity-0 translate-x-4 pointer-events-none lg:max-h-[1600px]'
+                }`}
+              >
+                <div className="space-y-4">
               <section className="rounded-3xl border border-slate-200 bg-white p-4">
                 <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
                 <div className="mt-3">
@@ -381,8 +429,9 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                   onCancel={() => setForm({ ...emptyForm, startDate: selectedDate, endDate: selectedDate })}
                 />
               ) : null}
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         </section>
       </div>
