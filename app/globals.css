@@ -24,6 +24,17 @@ body {
   animation: calendar-month-enter 220ms ease-out;
 }
 
+.calendar-layout-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .calendar-layout-grid {
+    grid-template-columns: var(--calendar-layout-columns, minmax(0, 1fr));
+    transition: grid-template-columns 300ms ease-out;
+  }
+}
+
 @keyframes calendar-month-enter {
   from {
     opacity: 0.72;

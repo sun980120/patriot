@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   createClubEventAction,
@@ -322,7 +322,14 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
             <button type="button" onClick={() => moveMonth(1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">다음</button>
           </div>
 
-          <div className={`mt-4 grid gap-4 transition-all duration-300 ease-out ${renderSelectedDatePanel ? 'lg:grid-cols-[1.25fr_0.75fr]' : 'lg:grid-cols-1'}`}>
+          <div
+            className="calendar-layout-grid mt-4 grid gap-4"
+            style={{
+              '--calendar-layout-columns': showSelectedDatePanel
+                ? 'minmax(0, 1.25fr) minmax(0, 0.75fr)'
+                : 'minmax(0, 1fr) minmax(0, 0fr)',
+            } as CSSProperties}
+          >
             <div key={`${monthCursor.getFullYear()}-${monthCursor.getMonth()}`} className="calendar-month-transition overflow-hidden rounded-3xl border border-slate-200 bg-white">
               <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black">
                 {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
@@ -347,7 +354,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                           selectDate(date);
                         }
                       }}
-                      className={`min-h-20 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected && showSelectedDatePanel ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
+                      className={`min-h-24 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected && showSelectedDatePanel ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
                     >
                       <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected && showSelectedDatePanel ? 'bg-brand-700 text-white' : weekendTextClass(day.getDay())}`}>
                         {day.getDate()}
