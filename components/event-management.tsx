@@ -67,6 +67,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
   const [monthCursor, setMonthCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [form, setForm] = useState<ScheduleForm>(emptyForm);
   const [selectedDate, setSelectedDate] = useState(toDateInput(today));
+  const [selectedOccurrenceKey, setSelectedOccurrenceKey] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
@@ -84,6 +85,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
     return grouped;
   }, [occurrences]);
   const selectedOccurrences = occurrencesByDate.get(selectedDate) ?? [];
+  const selectedOccurrence = selectedOccurrences.find((occurrence) => occurrenceKey(occurrence) === selectedOccurrenceKey) ?? null;
 
   const updateForm = (patch: Partial<ScheduleForm>) => {
     setForm((current) => ({ ...current, ...patch }));
@@ -95,9 +97,15 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
 
   const selectDate = (date: string) => {
     setSelectedDate(date);
+    setSelectedOccurrenceKey(null);
     if (!form.id && canManage) {
       updateForm({ startDate: date, endDate: date });
     }
+  };
+
+  const selectOccurrence = (occurrence: CalendarOccurrence) => {
+    setSelectedDate(occurrence.date);
+    setSelectedOccurrenceKey(occurrenceKey(occurrence));
   };
 
   const editEvent = (event: ClubEvent) => {
@@ -220,22 +228,35 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                   const inMonth = day.getMonth() === monthCursor.getMonth();
                   const selected = selectedDate === date;
                   return (
-                    <button
-                      type="button"
+                    <div
                       key={date}
-                      onClick={() => selectDate(date)}
                       className={`min-h-28 border-t border-slate-100 p-2 text-left transition ${selected ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
                     >
-                      <span className={`text-sm font-black ${selected ? 'text-brand-800' : 'text-slate-800'}`}>{day.getDate()}</span>
+                      <button
+                        type="button"
+                        onClick={() => selectDate(date)}
+                        className={`h-7 min-w-7 rounded-full px-2 text-sm font-black transition ${selected ? 'bg-brand-700 text-white' : 'text-slate-800 hover:bg-slate-100'}`}
+                      >
+                        {day.getDate()}
+                      </button>
                       <div className="mt-2 space-y-1">
                         {dayOccurrences.slice(0, 3).map((occurrence) => (
-                          <div key={occurrenceKey(occurrence)} className="truncate rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-bold text-white">
-                            {formatOccurrenceTime(occurrence)} {occurrence.event.title}
-                          </div>
+                          <button
+                            type="button"
+                            key={occurrenceKey(occurrence)}
+                            onClick={() => selectOccurrence(occurrence)}
+                            className={`block w-full truncate rounded-lg px-2 py-1 text-left text-[11px] font-bold transition ${
+                              selectedOccurrenceKey === occurrenceKey(occurrence)
+                                ? 'bg-brand-700 text-white'
+                                : 'bg-slate-900 text-white hover:bg-brand-800'
+                            }`}
+                          >
+                            {occurrence.event.title}
+                          </button>
                         ))}
                         {dayOccurrences.length > 3 ? <div className="text-[11px] font-bold text-slate-500">+{dayOccurrences.length - 3}개</div> : null}
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -257,32 +278,102 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                   {selectedOccurrences.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm font-semibold text-slate-500">등록된 일정이 없습니다.</div>
                   ) : selectedOccurrences.map((occurrence) => (
-                    <article key={occurrenceKey(occurrence)} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-black text-slate-900">{occurrence.event.title}</p>
-                          <p className="mt-1 text-xs font-bold text-slate-500">
-                            {TYPE_LABELS[occurrence.event.type]} · {formatDateRange(occurrence)} · {formatOccurrenceTime(occurrence)}
-                          </p>
-                          {occurrence.event.recurrence_type !== 'NONE' ? <p className="mt-1 text-xs font-bold text-brand-700">{RECURRENCE_LABELS[occurrence.event.recurrence_type]}</p> : null}
-                          {occurrence.event.location ? <p className="mt-1 text-xs text-slate-500">{occurrence.event.location}</p> : null}
-                        </div>
-                        {canManage ? (
-                          <div className="flex gap-1">
-                            <button type="button" onClick={() => editEvent(occurrence.event)} className="rounded-lg bg-white px-2 py-1 text-xs font-black text-slate-700">수정</button>
-                            <button type="button" onClick={() => removeEvent(occurrence.event.id)} className="rounded-lg bg-slate-900 px-2 py-1 text-xs font-black text-white">삭제</button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </article>
+                    <button
+                      type="button"
+                      key={occurrenceKey(occurrence)}
+                      onClick={() => selectOccurrence(occurrence)}
+                      className={`w-full rounded-2xl border p-3 text-left transition ${
+                        selectedOccurrenceKey === occurrenceKey(occurrence)
+                          ? 'border-brand-500 bg-brand-50'
+                          : 'border-slate-200 bg-slate-50 hover:border-brand-200 hover:bg-white'
+                      }`}
+                    >
+                      <p className="truncate text-sm font-black text-slate-900">{occurrence.event.title}</p>
+                      <p className="mt-1 text-xs font-bold text-slate-500">{formatOccurrenceTime(occurrence)}</p>
+                    </button>
                   ))}
                 </div>
               </section>
+              <ScheduleDetailPanel
+                occurrence={selectedOccurrence}
+                canManage={canManage}
+                onEdit={editEvent}
+                onDelete={removeEvent}
+              />
             </div>
           </div>
         </section>
       </div>
     </>
+  );
+}
+
+function ScheduleDetailPanel({
+  occurrence,
+  canManage,
+  onEdit,
+  onDelete,
+}: {
+  occurrence: CalendarOccurrence | null;
+  canManage: boolean;
+  onEdit: (event: ClubEvent) => void;
+  onDelete: (eventId: string) => void;
+}) {
+  if (!occurrence) {
+    return (
+      <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-4 text-sm font-semibold text-slate-500">
+        캘린더의 일정명을 클릭하면 상세 내용을 확인할 수 있습니다.
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black text-brand-700">{TYPE_LABELS[occurrence.event.type]}</p>
+          <h3 className="mt-1 text-xl font-black text-slate-900">{occurrence.event.title}</h3>
+        </div>
+        {canManage ? (
+          <div className="flex gap-1">
+            <button type="button" onClick={() => onEdit(occurrence.event)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">수정</button>
+            <button type="button" onClick={() => onDelete(occurrence.event.id)} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white">삭제</button>
+          </div>
+        ) : null}
+      </div>
+      <dl className="mt-4 grid gap-3 text-sm">
+        <div>
+          <dt className="text-xs font-black text-slate-500">일정 기간</dt>
+          <dd className="mt-1 font-bold text-slate-900">{formatDateRange(occurrence)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-black text-slate-500">시간</dt>
+          <dd className="mt-1 font-bold text-slate-900">{formatOccurrenceTime(occurrence)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-black text-slate-500">반복</dt>
+          <dd className="mt-1 font-bold text-slate-900">{RECURRENCE_LABELS[occurrence.event.recurrence_type]}</dd>
+        </div>
+        {occurrence.event.recurrence_until ? (
+          <div>
+            <dt className="text-xs font-black text-slate-500">반복 종료일</dt>
+            <dd className="mt-1 font-bold text-slate-900">{occurrence.event.recurrence_until}</dd>
+          </div>
+        ) : null}
+        {occurrence.event.location ? (
+          <div>
+            <dt className="text-xs font-black text-slate-500">장소</dt>
+            <dd className="mt-1 font-bold text-slate-900">{occurrence.event.location}</dd>
+          </div>
+        ) : null}
+        {occurrence.event.memo ? (
+          <div>
+            <dt className="text-xs font-black text-slate-500">메모</dt>
+            <dd className="mt-1 whitespace-pre-wrap text-slate-700">{occurrence.event.memo}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </section>
   );
 }
 

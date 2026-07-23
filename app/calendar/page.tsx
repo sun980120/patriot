@@ -14,7 +14,9 @@ export default async function CalendarPage() {
     redirect('/login');
   }
 
-  const canManage = ['admin', 'super_admin'].includes(profileData.profile.app_role);
+  const canManage =
+    ['admin', 'super_admin'].includes(profileData.profile.app_role) ||
+    profileData.profile.member_grade === '간사';
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
