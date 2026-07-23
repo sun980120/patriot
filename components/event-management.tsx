@@ -116,6 +116,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
   const [selectedDate, setSelectedDate] = useState(toDateInput(today));
   const [showSelectedDatePanel, setShowSelectedDatePanel] = useState(false);
   const [renderSelectedDatePanel, setRenderSelectedDatePanel] = useState(false);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [selectedOccurrenceKey, setSelectedOccurrenceKey] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
@@ -141,6 +142,10 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
     setForm((current) => ({ ...current, ...patch }));
   };
 
+  const resetFormForDate = (date: string) => {
+    setForm({ ...emptyForm, startDate: date, endDate: date });
+  };
+
   useEffect(() => {
     return () => {
       if (panelAnimationTimeoutRef.current) {
@@ -163,6 +168,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
     }
     setShowSelectedDatePanel(false);
     setSelectedOccurrenceKey(null);
+    setShowScheduleForm(false);
     panelAnimationTimeoutRef.current = setTimeout(() => {
       setRenderSelectedDatePanel(false);
     }, PANEL_ANIMATION_MS);
@@ -209,6 +215,22 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
     setSelectedOccurrenceKey(occurrenceKey(occurrence));
   };
 
+  const toggleScheduleForm = () => {
+    if (!canManage) return;
+    setShowScheduleForm((current) => {
+      if (current) {
+        if (!form.id) {
+          resetFormForDate(selectedDate);
+        }
+        return false;
+      }
+      if (!form.id) {
+        resetFormForDate(selectedDate);
+      }
+      return true;
+    });
+  };
+
   const editEvent = (event: ClubEvent) => {
     if (!canManage) return;
     setForm({
@@ -225,6 +247,8 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
       memo: event.memo ?? '',
     });
     setSelectedDate(event.start_date);
+    setShowScheduleForm(true);
+    openSelectedDatePanel();
   };
 
   const submit = () => {
@@ -281,7 +305,8 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
       setToastTone(result.ok ? 'success' : 'error');
       setMessage(result.message ?? (result.ok ? '일정이 저장되었습니다.' : '일정 저장에 실패했습니다.'));
       if (result.ok) {
-        setForm({ ...emptyForm, startDate: form.startDate, endDate: form.startDate });
+        resetFormForDate(form.startDate);
+        setShowScheduleForm(false);
         openSelectedDatePanel();
         router.refresh();
       }
@@ -389,26 +414,41 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
               <div className="relative min-h-0">
                 <div
                   aria-hidden={!showSelectedDatePanel}
-                  className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out lg:absolute lg:left-0 lg:right-0 lg:top-0 ${
+                  className={`transition-[max-height,opacity,transform] duration-300 ease-out ${
                     showSelectedDatePanel
-                      ? 'max-h-[1600px] opacity-100 translate-x-0'
-                      : 'max-h-0 opacity-0 translate-x-4 pointer-events-none lg:max-h-[1600px]'
+                      ? 'max-h-[calc(100vh-180px)] overflow-y-auto pr-1 opacity-100 translate-x-0 lg:max-h-[calc(100vh-240px)]'
+                      : 'max-h-0 overflow-hidden opacity-0 translate-x-4 pointer-events-none'
                   }`}
                 >
                 <div className="space-y-4">
               <section className="rounded-3xl border border-slate-200 bg-white p-4">
-                <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
+                  {canManage ? (
+                    <button
+                      type="button"
+                      onClick={toggleScheduleForm}
+                      className="h-9 shrink-0 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                    >
+                      {showScheduleForm ? '입력 닫기' : '일정 추가'}
+                    </button>
+                  ) : null}
+                </div>
                 <div className="mt-3">
                   {selectedOccurrences.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm font-semibold text-slate-500">등록된 일정이 없습니다.</div>
                   ) : (
-                    <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+                    <div className={`-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2 ${selectedOccurrences.length === 1 ? 'pr-1' : ''}`}>
                       {selectedOccurrences.map((occurrence) => (
                         <button
                           type="button"
                           key={occurrenceKey(occurrence)}
                           onClick={() => selectOccurrence(occurrence)}
-                          className={`min-w-[240px] snap-start rounded-2xl border p-4 text-left transition sm:min-w-[280px] ${
+                          className={`snap-start rounded-2xl border p-4 text-left transition ${
+                            selectedOccurrences.length === 1
+                              ? 'w-full'
+                              : 'min-w-[240px] sm:min-w-[280px]'
+                          } ${
                             selectedOccurrenceKey === occurrenceKey(occurrence)
                               ? TYPE_STYLES[occurrence.event.type].listSelected
                               : TYPE_STYLES[occurrence.event.type].list
@@ -428,13 +468,16 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                 onEdit={editEvent}
                 onDelete={(eventId, mode, occurrenceStartDate) => removeEvent(eventId, mode, occurrenceStartDate)}
               />
-              {canManage ? (
+              {canManage && showScheduleForm ? (
                 <ScheduleFormPanel
                   form={form}
                   isPending={isPending}
                   onChange={updateForm}
                   onSubmit={submit}
-                  onCancel={() => setForm({ ...emptyForm, startDate: selectedDate, endDate: selectedDate })}
+                  onCancel={() => {
+                    resetFormForDate(selectedDate);
+                    setShowScheduleForm(false);
+                  }}
                 />
               ) : null}
                 </div>
@@ -708,16 +751,22 @@ function formatOccurrenceTime(occurrence: CalendarOccurrence) {
   if (!occurrence.startTime || !occurrence.endTime) {
     return '종일';
   }
+  const startTime = formatTime(occurrence.startTime);
+  const endTime = formatTime(occurrence.endTime);
   if (occurrence.startDate === occurrence.endDate) {
-    return `${occurrence.startTime}-${occurrence.endTime}`;
+    return `${startTime}-${endTime}`;
   }
   if (occurrence.date === occurrence.startDate) {
-    return `${occurrence.startTime} 시작`;
+    return `${startTime} 시작`;
   }
   if (occurrence.date === occurrence.endDate) {
-    return `${occurrence.endTime} 종료`;
+    return `${endTime} 종료`;
   }
   return '진행 중';
+}
+
+function formatTime(time: string) {
+  return time.slice(0, 5);
 }
 
 function occurrenceKey(occurrence: CalendarOccurrence) {
