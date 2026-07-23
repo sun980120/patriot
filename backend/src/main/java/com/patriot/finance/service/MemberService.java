@@ -44,6 +44,7 @@ public class MemberService {
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenService refreshTokenService;
+    private final AuditLogService auditLogService;
 
     @Transactional
     public MemberSummaryResponse signup(SignupRequest request) {
@@ -207,6 +208,13 @@ public class MemberService {
     public MemberSummaryResponse approve(UUID memberId) {
         Member member = getMember(memberId);
         member.approve();
+        auditLogService.record(
+            "MEMBER_APPROVED",
+            "MEMBER",
+            member.getId(),
+            member.getFullName(),
+            "가입 신청을 승인했습니다."
+        );
         return toResponse(member);
     }
 
@@ -216,6 +224,13 @@ public class MemberService {
         if (member.getApprovalStatus() != ApprovalStatus.PENDING) {
             throw new IllegalArgumentException("승인 대기 회원만 삭제할 수 있습니다.");
         }
+        auditLogService.record(
+            "PENDING_MEMBER_DELETED",
+            "MEMBER",
+            member.getId(),
+            member.getFullName(),
+            "승인 대기 가입 신청을 삭제했습니다."
+        );
         memberRepository.delete(member);
         return new MessageResponse("가입 신청이 삭제되었습니다.");
     }
@@ -224,6 +239,13 @@ public class MemberService {
     public MemberSummaryResponse deactivate(UUID memberId) {
         Member member = getMember(memberId);
         member.deactivate();
+        auditLogService.record(
+            "MEMBER_DEACTIVATED",
+            "MEMBER",
+            member.getId(),
+            member.getFullName(),
+            "회원을 비활성화했습니다."
+        );
         return toResponse(member);
     }
 
@@ -231,13 +253,28 @@ public class MemberService {
     public MemberSummaryResponse activate(UUID memberId) {
         Member member = getMember(memberId);
         member.activate();
+        auditLogService.record(
+            "MEMBER_ACTIVATED",
+            "MEMBER",
+            member.getId(),
+            member.getFullName(),
+            "회원을 활성화했습니다."
+        );
         return toResponse(member);
     }
 
     @Transactional
     public MemberSummaryResponse updateFeeExemption(UUID memberId, Integer months) {
         Member member = getMember(memberId);
+        Integer previousMonths = member.getFeeExemptionMonths();
         member.updateFeeExemption(months);
+        auditLogService.record(
+            "MEMBER_FEE_EXEMPTION_UPDATED",
+            "MEMBER",
+            member.getId(),
+            member.getFullName(),
+            "회비 면제 개월을 " + previousMonths + "개월에서 " + member.getFeeExemptionMonths() + "개월로 변경했습니다."
+        );
         return toResponse(member);
     }
 
@@ -245,6 +282,13 @@ public class MemberService {
     public MemberSummaryResponse promoteToAdmin(UUID memberId) {
         Member member = getMember(memberId);
         member.promoteToAdmin();
+        auditLogService.record(
+            "MEMBER_PROMOTED_TO_ADMIN",
+            "MEMBER",
+            member.getId(),
+            member.getFullName(),
+            "회원을 간사로 승격했습니다."
+        );
         return toResponse(member);
     }
 
@@ -252,6 +296,13 @@ public class MemberService {
     public MemberSummaryResponse adminToPromote(UUID memberId) {
         Member member = getMember(memberId);
         member.adminToPromote();
+        auditLogService.record(
+            "ADMIN_DEMOTED_TO_MEMBER",
+            "MEMBER",
+            member.getId(),
+            member.getFullName(),
+            "간사 권한을 제거했습니다."
+        );
         return toResponse(member);
     }
 
@@ -261,6 +312,13 @@ public class MemberService {
         member.changePassword(passwordEncoder.encode(DEFAULT_RESET_PASSWORD));
         member.resetLoginFailures();
         refreshTokenService.revokeActiveTokens(member);
+        auditLogService.record(
+            "MEMBER_PASSWORD_RESET",
+            "MEMBER",
+            member.getId(),
+            member.getFullName(),
+            "관리자가 비밀번호를 기본값으로 초기화했습니다."
+        );
         return new MessageResponse("비밀번호가 기본값 0000으로 초기화되고 계정 잠금이 해제되었습니다.");
     }
 

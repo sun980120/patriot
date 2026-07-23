@@ -27,6 +27,9 @@ function refreshHome() {
   revalidatePath('/member');
   revalidatePath('/admin/members');
   revalidatePath('/admin/finance');
+  revalidatePath('/admin/audit-logs');
+  revalidatePath('/admin/events');
+  revalidatePath('/calendar');
   revalidatePath('/notifications');
 }
 
@@ -494,6 +497,7 @@ export async function deleteExpenseEntryAction(id: string): Promise<ActionResult
 
 export async function createAdditionalChargeGroupAction(args: {
   fiscalYearId: string;
+  clubEventId?: string | null;
   title: string;
   category: 'JOIN_FEE' | 'UNIFORM_FEE' | 'DINNER_FEE' | 'TOURNAMENT_FEE' | 'ETC_FEE';
   eventDate?: string | null;
@@ -643,6 +647,111 @@ export async function sendAdditionalChargeFiscalYearReminderAction(fiscalYearId:
     ok: true,
     message: `${result.data?.message ?? '추가비용 알림을 처리했습니다.'} 앱 알림 ${targetCount}건, 푸시 성공 ${sentCount}건, 실패 ${failedCount}건`,
   };
+}
+
+export async function createClubEventAction(args: {
+  title: string;
+  type: 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
+  startDate: string;
+  endDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  recurrenceType: 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  recurrenceUntil?: string | null;
+  location?: string | null;
+  memo?: string | null;
+}): Promise<ActionResult> {
+  const result = await serverApiFetch('/api/events', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '일정 생성에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: '일정이 생성되었습니다.' };
+}
+
+export async function updateClubEventAction(eventId: string, args: {
+  title: string;
+  type: 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
+  startDate: string;
+  endDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  recurrenceType: 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  recurrenceUntil?: string | null;
+  location?: string | null;
+  memo?: string | null;
+}): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/events/${eventId}`, {
+    method: 'PUT',
+    body: JSON.stringify(args),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '일정 수정에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: '일정이 수정되었습니다.' };
+}
+
+export async function updateClubEventStatusAction(
+  eventId: string,
+  status: 'PLANNED' | 'COMPLETED' | 'CANCELLED'
+): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/events/${eventId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '일정 상태 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: '일정 상태가 변경되었습니다.' };
+}
+
+export async function updateEventParticipantAttendanceAction(
+  eventId: string,
+  memberId: string,
+  attendanceStatus: 'REGISTERED' | 'PRESENT' | 'ABSENT'
+): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/events/${eventId}/participants/${memberId}/attendance`, {
+    method: 'PATCH',
+    body: JSON.stringify({ attendanceStatus }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '참가자 출석 상태 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: '참가자 출석 상태가 변경되었습니다.' };
+}
+
+export async function deleteClubEventAction(
+  eventId: string,
+  args?: {
+    mode?: 'ONLY_THIS' | 'THIS_AND_FOLLOWING' | 'ALL';
+    occurrenceStartDate?: string | null;
+  }
+): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/events/${eventId}`, {
+    method: 'DELETE',
+    body: args ? JSON.stringify(args) : undefined,
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '일정 삭제에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: '일정이 삭제되었습니다.' };
 }
 
 export async function createTacticShareAction(input: {

@@ -9,6 +9,8 @@ import java.util.UUID;
 public record ChargeGroupResponse(
     UUID id,
     UUID fiscalYearId,
+    UUID clubEventId,
+    String clubEventTitle,
     String title,
     AdditionalChargeCategory category,
     LocalDate eventDate,

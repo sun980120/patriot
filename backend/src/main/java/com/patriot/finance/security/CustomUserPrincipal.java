@@ -16,7 +16,10 @@ public class CustomUserPrincipal implements UserDetails {
 
     public CustomUserPrincipal(Member member) {
         this.member = member;
-        this.authorities = List.of(new SimpleGrantedAuthority("ROLE_" + member.getAppRole().name()));
+        this.authorities = List.of(
+            new SimpleGrantedAuthority("ROLE_" + member.getAppRole().name()),
+            new SimpleGrantedAuthority("GRADE_" + member.getMemberGrade().name())
+        );
     }
 
     @Override

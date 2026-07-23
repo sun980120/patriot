@@ -1,6 +1,7 @@
 package com.patriot.finance.service;
 
 import com.patriot.finance.domain.entity.ChargeGroup;
+import com.patriot.finance.domain.entity.ClubEvent;
 import com.patriot.finance.domain.entity.ExpenseEntry;
 import com.patriot.finance.domain.entity.FiscalYear;
 import com.patriot.finance.domain.entity.IncomeEntry;
@@ -12,6 +13,7 @@ import com.patriot.finance.dto.ChargeGroupResponse;
 import com.patriot.finance.dto.CreateChargeGroupRequest;
 import com.patriot.finance.dto.MemberChargeResponse;
 import com.patriot.finance.repository.ChargeGroupRepository;
+import com.patriot.finance.repository.ClubEventRepository;
 import com.patriot.finance.repository.ExpenseEntryRepository;
 import com.patriot.finance.repository.FiscalYearRepository;
 import com.patriot.finance.repository.IncomeEntryRepository;
@@ -32,10 +34,12 @@ public class AdditionalChargeService {
     private final FiscalYearRepository fiscalYearRepository;
     private final MemberRepository memberRepository;
     private final ChargeGroupRepository chargeGroupRepository;
+    private final ClubEventRepository clubEventRepository;
     private final MemberChargeRepository memberChargeRepository;
     private final ExpenseEntryRepository expenseEntryRepository;
     private final IncomeEntryRepository incomeEntryRepository;
     private final PushNotificationService pushNotificationService;
+    private final AuditLogService auditLogService;
 
     public List<ChargeGroupResponse> findChargeGroups(UUID fiscalYearId) {
         return chargeGroupRepository.findByFiscalYearIdOrderByCreatedAtDesc(fiscalYearId).stream()
@@ -47,6 +51,10 @@ public class AdditionalChargeService {
     public ChargeGroupResponse createChargeGroup(CreateChargeGroupRequest request) {
         FiscalYear fiscalYear = fiscalYearRepository.findById(request.fiscalYearId())
             .orElseThrow(() -> new IllegalArgumentException("연도를 찾을 수 없습니다."));
+        ClubEvent clubEvent = request.clubEventId() == null
+            ? null
+            : clubEventRepository.findById(request.clubEventId())
+                .orElseThrow(() -> new IllegalArgumentException("이벤트를 찾을 수 없습니다."));
 
         List<Member> participants = memberRepository.findAllById(request.participantMemberIds()).stream()
             .filter(member -> member.getApprovalStatus() == ApprovalStatus.APPROVED)
@@ -59,6 +67,7 @@ public class AdditionalChargeService {
 
         ChargeGroup chargeGroup = chargeGroupRepository.save(ChargeGroup.builder()
             .fiscalYear(fiscalYear)
+            .clubEvent(clubEvent)
             .title(request.title().trim())
             .category(request.category())
             .eventDate(request.eventDate())
@@ -80,6 +89,14 @@ public class AdditionalChargeService {
 
         List<MemberCharge> savedCharges = memberChargeRepository.saveAll(charges);
         pushNotificationService.sendAdditionalChargeCreated(chargeGroup, savedCharges);
+        auditLogService.record(
+            "ADDITIONAL_CHARGE_GROUP_CREATED",
+            "CHARGE_GROUP",
+            chargeGroup.getId(),
+            chargeGroup.getTitle(),
+            "추가 비용 이벤트를 생성했습니다. 참가자 " + savedCharges.size() + "명, 1인당 "
+                + request.amountPerParticipant() + "원"
+        );
         return toResponse(chargeGroup);
     }
 
@@ -89,6 +106,13 @@ public class AdditionalChargeService {
             .orElseThrow(() -> new IllegalArgumentException("추가 비용 청구 내역을 찾을 수 없습니다."));
 
         charge.markPaid(paid);
+        auditLogService.record(
+            paid ? "ADDITIONAL_CHARGE_MARKED_PAID" : "ADDITIONAL_CHARGE_MARKED_UNPAID",
+            "MEMBER_CHARGE",
+            charge.getId(),
+            charge.getMember().getFullName(),
+            charge.getChargeGroup().getTitle() + " 추가 비용을 " + (paid ? "납부 완료" : "미납") + " 처리했습니다."
+        );
         return toChargeResponse(charge);
     }
 
@@ -102,6 +126,13 @@ public class AdditionalChargeService {
         }
 
         charge.updateAmount(amount, adjustmentReason);
+        auditLogService.record(
+            "ADDITIONAL_CHARGE_AMOUNT_UPDATED",
+            "MEMBER_CHARGE",
+            charge.getId(),
+            charge.getMember().getFullName(),
+            charge.getChargeGroup().getTitle() + " 청구 금액을 " + charge.getAmount() + "원으로 변경했습니다."
+        );
         return toChargeResponse(charge);
     }
 
@@ -165,6 +196,13 @@ public class AdditionalChargeService {
         }
 
         group.completeSettlement(actualCost);
+        auditLogService.record(
+            "ADDITIONAL_CHARGE_SETTLED",
+            "CHARGE_GROUP",
+            group.getId(),
+            group.getTitle(),
+            "추가 비용 이벤트를 정산 완료했습니다. 실제 사용금액 " + actualCost + "원, 잔액 " + surplus + "원"
+        );
         return toResponse(group);
     }
 
@@ -176,6 +214,13 @@ public class AdditionalChargeService {
         incomeEntryRepository.deleteByChargeGroupId(group.getId());
         expenseEntryRepository.deleteByChargeGroupId(group.getId());
         group.reopenSettlement();
+        auditLogService.record(
+            "ADDITIONAL_CHARGE_SETTLEMENT_REOPENED",
+            "CHARGE_GROUP",
+            group.getId(),
+            group.getTitle(),
+            "추가 비용 정산을 수정 모드로 전환했습니다."
+        );
 
         return toResponse(group);
     }
@@ -188,6 +233,13 @@ public class AdditionalChargeService {
         memberChargeRepository.deleteByChargeGroupId(group.getId());
         incomeEntryRepository.deleteByChargeGroupId(group.getId());
         expenseEntryRepository.deleteByChargeGroupId(group.getId());
+        auditLogService.record(
+            "ADDITIONAL_CHARGE_GROUP_DELETED",
+            "CHARGE_GROUP",
+            group.getId(),
+            group.getTitle(),
+            "추가 비용 이벤트와 연결된 청구/세입/지출 내역을 삭제했습니다."
+        );
         chargeGroupRepository.delete(group);
     }
 
@@ -207,6 +259,8 @@ public class AdditionalChargeService {
         return new ChargeGroupResponse(
             group.getId(),
             group.getFiscalYear().getId(),
+            group.getClubEvent() == null ? null : group.getClubEvent().getId(),
+            group.getClubEvent() == null ? null : group.getClubEvent().getTitle(),
             group.getTitle(),
             group.getCategory(),
             group.getEventDate(),

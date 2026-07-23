@@ -25,6 +25,10 @@ public class ChargeGroup extends BaseEntity {
     @JoinColumn(name = "fiscal_year_id", nullable = false)
     private FiscalYear fiscalYear;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "club_event_id")
+    private ClubEvent clubEvent;
+
     @Column(nullable = false)
     private String title;
 
@@ -47,6 +51,7 @@ public class ChargeGroup extends BaseEntity {
     @Builder
     private ChargeGroup(
         FiscalYear fiscalYear,
+        ClubEvent clubEvent,
         String title,
         AdditionalChargeCategory category,
         LocalDate eventDate,
@@ -56,6 +61,7 @@ public class ChargeGroup extends BaseEntity {
         String memo
     ) {
         this.fiscalYear = fiscalYear;
+        this.clubEvent = clubEvent;
         this.title = title;
         this.category = category;
         this.eventDate = eventDate;

@@ -4,6 +4,11 @@ export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 export type GradeSource = 'auto' | 'manual';
 export type AdditionalChargeCategory = 'JOIN_FEE' | 'UNIFORM_FEE' | 'DINNER_FEE' | 'TOURNAMENT_FEE' | 'ETC_FEE';
 export type AdditionalChargeStatus = 'UNPAID' | 'PAID';
+export type ClubEventType = 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
+export type ClubEventStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
+export type EventAttendanceStatus = 'REGISTERED' | 'PRESENT' | 'ABSENT';
+export type ScheduleRecurrenceType = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+export type ClubEventDeleteMode = 'ONLY_THIS' | 'THIS_AND_FOLLOWING' | 'ALL';
 
 export type Profile = {
   id: string;
@@ -79,6 +84,8 @@ export type ParticipantCharge = {
 export type ChargeGroup = {
   id: string;
   fiscal_year_id: string;
+  club_event_id: string | null;
+  club_event_title: string | null;
   title: string;
   category: AdditionalChargeCategory;
   event_date: string | null;
@@ -91,6 +98,51 @@ export type ChargeGroup = {
   memo: string | null;
   created_at: string | null;
   participant_charges: ParticipantCharge[];
+};
+
+export type AuditLog = {
+  id: string;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  target_name: string | null;
+  actor_id: string | null;
+  actor_name: string | null;
+  detail: string | null;
+  created_at: string | null;
+};
+
+export type AuditLogActor = {
+  actor_id: string;
+  actor_name: string;
+};
+
+export type ClubEventParticipant = {
+  member_id: string;
+  member_name: string;
+  member_username: string | null;
+  attendance_status: EventAttendanceStatus;
+};
+
+export type ClubEvent = {
+  id: string;
+  title: string;
+  type: ClubEventType;
+  status: ClubEventStatus;
+  event_date: string;
+  start_date: string;
+  end_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  start_at: string | null;
+  end_at: string | null;
+  recurrence_type: ScheduleRecurrenceType;
+  recurrence_until: string | null;
+  recurrence_exclusion_dates: string[];
+  location: string | null;
+  memo: string | null;
+  created_at: string | null;
+  participants: ClubEventParticipant[];
 };
 
 export type DashboardBundle = {
