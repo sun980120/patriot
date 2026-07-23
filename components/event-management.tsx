@@ -281,21 +281,29 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                   return (
                     <div
                       key={date}
-                      className={`min-h-28 border-t border-slate-100 p-2 text-left transition ${selected ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => selectDate(date)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          selectDate(date);
+                        }
+                      }}
+                      className={`min-h-28 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => selectDate(date)}
-                        className={`h-7 min-w-7 rounded-full px-2 text-sm font-black transition ${selected ? 'bg-brand-700 text-white' : 'text-slate-800 hover:bg-slate-100'}`}
-                      >
+                      <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected ? 'bg-brand-700 text-white' : 'text-slate-800'}`}>
                         {day.getDate()}
-                      </button>
+                      </span>
                       <div className="mt-2 space-y-1">
                         {dayOccurrences.slice(0, 3).map((occurrence) => (
                           <button
                             type="button"
                             key={occurrenceKey(occurrence)}
-                            onClick={() => selectOccurrence(occurrence)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              selectOccurrence(occurrence);
+                            }}
                             className={`block w-full truncate rounded-lg px-2 py-1 text-left text-[11px] font-bold transition ${
                               selectedOccurrenceKey === occurrenceKey(occurrence)
                                 ? TYPE_STYLES[occurrence.event.type].itemSelected
