@@ -802,6 +802,14 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
   const buildTransferText = (amount: number) =>
     `${CLUB_BANK.bankName} ${CLUB_BANK.accountNumber} ${amount.toLocaleString('ko-KR')}원`;
 
+  const openMonthlyPaymentGuide = (member: Profile, month: number) => {
+    setPaymentGuide({
+      memberName: member.full_name,
+      amount: ROLE_META[member.member_grade].fee,
+      label: `${month}월 회비`,
+    });
+  };
+
   const handleCopyTransferText = async (amount: number, label: string) => {
     await navigator.clipboard.writeText(buildTransferText(amount));
     setToastTone('success');
@@ -1595,13 +1603,7 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                                 ) : (
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      setPaymentGuide({
-                                        memberName: row.member.full_name,
-                                        amount: ROLE_META[row.member.member_grade].fee,
-                                        label: `${cell.month}월 회비`,
-                                      })
-                                    }
+                                    onClick={() => openMonthlyPaymentGuide(row.member, cell.month)}
                                     className="w-full rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white"
                                   >
                                     납부하기
@@ -1647,15 +1649,24 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                             const exempt = autoExempt || manualExempt;
                             const cellActive = adminMode && !staff;
                             const paid = Boolean(cell.payment?.paid);
+                            const payable = !adminMode && !staff && !exempt && !paid;
                             const amount = cell.payment?.charged_amount ?? 0;
                             const appliedGrade = cell.payment?.applied_grade ?? row.member.member_grade;
                             return (
                               <td key={`${row.member.id}-${cell.month}`} className="px-2 py-4">
                                 <button
                                   type="button"
-                                  disabled={!cellActive}
-                                  onClick={() => openPaymentAction(row.member, cell.month)}
-                                  className={`flex h-24 w-full flex-col items-center justify-center rounded-2xl border px-3 py-3 text-center transition ${buildPaymentButtonClass(staff, exempt, paid, cellActive)}`}
+                                  disabled={!cellActive && !payable}
+                                  onClick={() => {
+                                    if (cellActive) {
+                                      openPaymentAction(row.member, cell.month);
+                                      return;
+                                    }
+                                    if (payable) {
+                                      openMonthlyPaymentGuide(row.member, cell.month);
+                                    }
+                                  }}
+                                  className={`flex h-24 w-full flex-col items-center justify-center rounded-2xl border px-3 py-3 text-center transition ${buildPaymentButtonClass(staff, exempt, paid, cellActive || payable)}`}
                                 >
                                   <span className="block text-xs font-bold">
                                     {staff ? '면제' : exempt ? '면제' : paid ? '납부 완료' : '미납'}
@@ -1671,7 +1682,9 @@ export function ClubDashboard({ initialData, source }: { initialData: DashboardB
                                           ? '관리 열기'
                                           : cellActive
                                             ? '관리 열기'
-                                            : '납부 전'}
+                                            : payable
+                                              ? '납부하기'
+                                              : '납부 전'}
                                   </span>
                                 </button>
                               </td>
