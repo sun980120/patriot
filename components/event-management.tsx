@@ -274,7 +274,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
             </div>
           </div>
 
-          <div className={`mt-6 grid gap-4 ${showSelectedDatePanel ? 'lg:grid-cols-[1.25fr_0.75fr]' : ''}`}>
+          <div className={`mt-6 grid gap-4 transition-all duration-300 ease-out ${showSelectedDatePanel ? 'lg:grid-cols-[1.25fr_0.75fr]' : 'lg:grid-cols-1'}`}>
             <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
               <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black">
                 {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
@@ -330,8 +330,15 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
               </div>
             </div>
 
-            {showSelectedDatePanel ? (
-            <div className="space-y-4">
+            <div
+              aria-hidden={!showSelectedDatePanel}
+              className={`overflow-hidden transition-all duration-300 ease-out ${
+                showSelectedDatePanel
+                  ? 'max-h-[1600px] opacity-100 translate-x-0'
+                  : 'max-h-0 opacity-0 translate-x-4 pointer-events-none lg:max-h-none'
+              }`}
+            >
+              <div className="space-y-4">
               <section className="rounded-3xl border border-slate-200 bg-white p-4">
                 <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
                 <div className="mt-3">
@@ -373,8 +380,8 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                   onCancel={() => setForm({ ...emptyForm, startDate: selectedDate, endDate: selectedDate })}
                 />
               ) : null}
+              </div>
             </div>
-            ) : null}
           </div>
         </section>
       </div>
