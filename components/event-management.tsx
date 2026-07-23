@@ -386,14 +386,15 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
             </div>
 
             {renderSelectedDatePanel ? (
-              <div
-                aria-hidden={!showSelectedDatePanel}
-                className={`overflow-hidden transition-all duration-300 ease-out ${
-                  showSelectedDatePanel
-                    ? 'max-h-[1600px] opacity-100 translate-x-0'
-                    : 'max-h-0 opacity-0 translate-x-4 pointer-events-none lg:max-h-[1600px]'
-                }`}
-              >
+              <div className="relative min-h-0">
+                <div
+                  aria-hidden={!showSelectedDatePanel}
+                  className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out lg:absolute lg:left-0 lg:right-0 lg:top-0 ${
+                    showSelectedDatePanel
+                      ? 'max-h-[1600px] opacity-100 translate-x-0'
+                      : 'max-h-0 opacity-0 translate-x-4 pointer-events-none lg:max-h-[1600px]'
+                  }`}
+                >
                 <div className="space-y-4">
               <section className="rounded-3xl border border-slate-200 bg-white p-4">
                 <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
@@ -437,6 +438,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                 />
               ) : null}
                 </div>
+              </div>
               </div>
             ) : null}
           </div>
