@@ -113,6 +113,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
   const [monthCursor, setMonthCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [form, setForm] = useState<ScheduleForm>(emptyForm);
   const [selectedDate, setSelectedDate] = useState(toDateInput(today));
+  const [showSelectedDatePanel, setShowSelectedDatePanel] = useState(false);
   const [selectedOccurrenceKey, setSelectedOccurrenceKey] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
@@ -142,7 +143,13 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
   };
 
   const selectDate = (date: string) => {
+    if (selectedDate === date && showSelectedDatePanel) {
+      setShowSelectedDatePanel(false);
+      setSelectedOccurrenceKey(null);
+      return;
+    }
     setSelectedDate(date);
+    setShowSelectedDatePanel(true);
     setSelectedOccurrenceKey(null);
     if (!form.id && canManage) {
       updateForm({ startDate: date, endDate: date });
@@ -151,6 +158,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
 
   const selectOccurrence = (occurrence: CalendarOccurrence) => {
     setSelectedDate(occurrence.date);
+    setShowSelectedDatePanel(true);
     setSelectedOccurrenceKey(occurrenceKey(occurrence));
   };
 
@@ -227,6 +235,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
       setMessage(result.message ?? (result.ok ? '일정이 저장되었습니다.' : '일정 저장에 실패했습니다.'));
       if (result.ok) {
         setForm({ ...emptyForm, startDate: form.startDate, endDate: form.startDate });
+        setShowSelectedDatePanel(true);
         router.refresh();
       }
     });
@@ -249,8 +258,8 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
     <>
       <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
       <div className="space-y-8">
-        <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur sm:p-8">
-          <div className="flex flex-col gap-4">
+        <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Calendar</p>
               <h2 className="mt-2 text-3xl font-black text-slate-900">캘린더</h2>
@@ -258,15 +267,14 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                 {canManage ? '일정을 등록하고 월간 캘린더에서 확인합니다.' : '동호회 일정을 월간 캘린더에서 확인합니다.'}
               </p>
             </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => moveMonth(-1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">이전</button>
+              <span className="min-w-32 text-center text-lg font-black text-slate-900">{monthCursor.getFullYear()}년 {monthCursor.getMonth() + 1}월</span>
+              <button type="button" onClick={() => moveMonth(1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">다음</button>
+            </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-center gap-4">
-            <button type="button" onClick={() => moveMonth(-1)} className="h-12 rounded-2xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:border-brand-300 hover:text-brand-800">이전</button>
-            <span className="min-w-40 text-center text-xl font-black text-slate-900">{monthCursor.getFullYear()}년 {monthCursor.getMonth() + 1}월</span>
-            <button type="button" onClick={() => moveMonth(1)} className="h-12 rounded-2xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:border-brand-300 hover:text-brand-800">다음</button>
-          </div>
-
-          <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(380px,0.8fr)]">
+          <div className={`mt-6 grid gap-4 ${showSelectedDatePanel ? 'lg:grid-cols-[1.25fr_0.75fr]' : ''}`}>
             <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
               <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black">
                 {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
@@ -291,9 +299,9 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                           selectDate(date);
                         }
                       }}
-                      className={`min-h-28 cursor-pointer border-t border-slate-100 p-2 text-left transition xl:min-h-36 ${selected ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
+                      className={`min-h-28 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected && showSelectedDatePanel ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
                     >
-                      <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected ? 'bg-brand-700 text-white' : weekendTextClass(day.getDay())}`}>
+                      <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected && showSelectedDatePanel ? 'bg-brand-700 text-white' : weekendTextClass(day.getDay())}`}>
                         {day.getDate()}
                       </span>
                       <div className="mt-2 space-y-1">
@@ -322,6 +330,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
               </div>
             </div>
 
+            {showSelectedDatePanel ? (
             <div className="space-y-4">
               <section className="rounded-3xl border border-slate-200 bg-white p-4">
                 <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
@@ -365,6 +374,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                 />
               ) : null}
             </div>
+            ) : null}
           </div>
         </section>
       </div>
