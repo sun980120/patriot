@@ -5,7 +5,7 @@ import com.patriot.finance.domain.enums.ScheduleRecurrenceType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,11 +18,14 @@ public record ClubEventRequest(
 
     LocalDate eventDate,
 
-    @NotNull(message = "시작 일시를 입력해 주세요.")
-    LocalDateTime startAt,
+    @NotNull(message = "시작일을 입력해 주세요.")
+    LocalDate startDate,
 
-    @NotNull(message = "종료 일시를 입력해 주세요.")
-    LocalDateTime endAt,
+    @NotNull(message = "종료일을 입력해 주세요.")
+    LocalDate endDate,
+
+    LocalTime startTime,
+    LocalTime endTime,
 
     ScheduleRecurrenceType recurrenceType,
     LocalDate recurrenceUntil,

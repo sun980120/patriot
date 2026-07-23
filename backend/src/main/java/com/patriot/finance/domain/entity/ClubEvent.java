@@ -10,6 +10,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -35,10 +36,16 @@ public class ClubEvent extends BaseEntity {
     @Column(nullable = false)
     private LocalDate eventDate;
 
-    @Column(nullable = false)
+    private LocalDate startDate;
+
+    private LocalDate endDate;
+
+    private LocalTime startTime;
+
+    private LocalTime endTime;
+
     private LocalDateTime startAt;
 
-    @Column(nullable = false)
     private LocalDateTime endAt;
 
     @Enumerated(EnumType.STRING)
@@ -57,6 +64,10 @@ public class ClubEvent extends BaseEntity {
         ClubEventType type,
         ClubEventStatus status,
         LocalDate eventDate,
+        LocalDate startDate,
+        LocalDate endDate,
+        LocalTime startTime,
+        LocalTime endTime,
         LocalDateTime startAt,
         LocalDateTime endAt,
         ScheduleRecurrenceType recurrenceType,
@@ -67,9 +78,13 @@ public class ClubEvent extends BaseEntity {
         this.title = title;
         this.type = type == null ? ClubEventType.ETC : type;
         this.status = status == null ? ClubEventStatus.PLANNED : status;
-        this.startAt = startAt;
-        this.endAt = endAt;
-        this.eventDate = eventDate == null && startAt != null ? startAt.toLocalDate() : eventDate;
+        this.startDate = startDate == null && startAt != null ? startAt.toLocalDate() : startDate;
+        this.endDate = endDate == null && endAt != null ? endAt.toLocalDate() : endDate;
+        this.startTime = startTime == null && startAt != null ? startAt.toLocalTime() : startTime;
+        this.endTime = endTime == null && endAt != null ? endAt.toLocalTime() : endTime;
+        this.startAt = this.startTime == null ? startAt : LocalDateTime.of(this.startDate, this.startTime);
+        this.endAt = this.endTime == null ? endAt : LocalDateTime.of(this.endDate, this.endTime);
+        this.eventDate = eventDate == null ? this.startDate : eventDate;
         this.recurrenceType = recurrenceType == null ? ScheduleRecurrenceType.NONE : recurrenceType;
         this.recurrenceUntil = recurrenceUntil;
         this.location = normalize(location);
@@ -79,8 +94,10 @@ public class ClubEvent extends BaseEntity {
     public void update(
         String title,
         ClubEventType type,
-        LocalDateTime startAt,
-        LocalDateTime endAt,
+        LocalDate startDate,
+        LocalDate endDate,
+        LocalTime startTime,
+        LocalTime endTime,
         ScheduleRecurrenceType recurrenceType,
         LocalDate recurrenceUntil,
         String location,
@@ -88,9 +105,13 @@ public class ClubEvent extends BaseEntity {
     ) {
         this.title = title;
         this.type = type;
-        this.startAt = startAt;
-        this.endAt = endAt;
-        this.eventDate = startAt.toLocalDate();
+        this.startDate = startDate;
+        this.endDate = endDate;
+        this.startTime = startTime;
+        this.endTime = endTime;
+        this.startAt = startTime == null ? null : LocalDateTime.of(startDate, startTime);
+        this.endAt = endTime == null ? null : LocalDateTime.of(endDate, endTime);
+        this.eventDate = startDate;
         this.recurrenceType = recurrenceType == null ? ScheduleRecurrenceType.NONE : recurrenceType;
         this.recurrenceUntil = recurrenceUntil;
         this.location = normalize(location);

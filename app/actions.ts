@@ -29,6 +29,7 @@ function refreshHome() {
   revalidatePath('/admin/finance');
   revalidatePath('/admin/audit-logs');
   revalidatePath('/admin/events');
+  revalidatePath('/calendar');
   revalidatePath('/notifications');
 }
 
@@ -651,8 +652,10 @@ export async function sendAdditionalChargeFiscalYearReminderAction(fiscalYearId:
 export async function createClubEventAction(args: {
   title: string;
   type: 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
-  startAt: string;
-  endAt: string;
+  startDate: string;
+  endDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
   recurrenceType: 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
   recurrenceUntil?: string | null;
   location?: string | null;
@@ -664,18 +667,20 @@ export async function createClubEventAction(args: {
   });
 
   if (!result.ok) {
-    return { ok: false, message: result.message ?? '이벤트 생성에 실패했습니다.' };
+    return { ok: false, message: result.message ?? '일정 생성에 실패했습니다.' };
   }
 
   refreshHome();
-  return { ok: true, message: '이벤트가 생성되었습니다.' };
+  return { ok: true, message: '일정이 생성되었습니다.' };
 }
 
 export async function updateClubEventAction(eventId: string, args: {
   title: string;
   type: 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
-  startAt: string;
-  endAt: string;
+  startDate: string;
+  endDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
   recurrenceType: 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
   recurrenceUntil?: string | null;
   location?: string | null;
@@ -687,11 +692,11 @@ export async function updateClubEventAction(eventId: string, args: {
   });
 
   if (!result.ok) {
-    return { ok: false, message: result.message ?? '이벤트 수정에 실패했습니다.' };
+    return { ok: false, message: result.message ?? '일정 수정에 실패했습니다.' };
   }
 
   refreshHome();
-  return { ok: true, message: '이벤트가 수정되었습니다.' };
+  return { ok: true, message: '일정이 수정되었습니다.' };
 }
 
 export async function updateClubEventStatusAction(
@@ -704,11 +709,11 @@ export async function updateClubEventStatusAction(
   });
 
   if (!result.ok) {
-    return { ok: false, message: result.message ?? '이벤트 상태 변경에 실패했습니다.' };
+    return { ok: false, message: result.message ?? '일정 상태 변경에 실패했습니다.' };
   }
 
   refreshHome();
-  return { ok: true, message: '이벤트 상태가 변경되었습니다.' };
+  return { ok: true, message: '일정 상태가 변경되었습니다.' };
 }
 
 export async function updateEventParticipantAttendanceAction(
@@ -735,11 +740,11 @@ export async function deleteClubEventAction(eventId: string): Promise<ActionResu
   });
 
   if (!result.ok) {
-    return { ok: false, message: result.message ?? '이벤트 삭제에 실패했습니다.' };
+    return { ok: false, message: result.message ?? '일정 삭제에 실패했습니다.' };
   }
 
   refreshHome();
-  return { ok: true, message: '이벤트가 삭제되었습니다.' };
+  return { ok: true, message: '일정이 삭제되었습니다.' };
 }
 
 export async function createTacticShareAction(input: {

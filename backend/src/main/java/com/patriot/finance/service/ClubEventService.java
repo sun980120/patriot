@@ -12,6 +12,7 @@ import com.patriot.finance.dto.EventParticipantResponse;
 import com.patriot.finance.repository.ClubEventRepository;
 import com.patriot.finance.repository.EventParticipantRepository;
 import com.patriot.finance.repository.MemberRepository;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -41,8 +42,10 @@ public class ClubEventService {
             .title(request.title().trim())
             .type(request.type())
             .eventDate(request.eventDate())
-            .startAt(request.startAt())
-            .endAt(request.endAt())
+            .startDate(request.startDate())
+            .endDate(request.endDate())
+            .startTime(request.startTime())
+            .endTime(request.endTime())
             .recurrenceType(request.recurrenceType())
             .recurrenceUntil(request.recurrenceUntil())
             .location(request.location())
@@ -60,8 +63,10 @@ public class ClubEventService {
         event.update(
             request.title().trim(),
             request.type(),
-            request.startAt(),
-            request.endAt(),
+            request.startDate(),
+            request.endDate(),
+            request.startTime(),
+            request.endTime(),
             request.recurrenceType(),
             request.recurrenceUntil(),
             request.location(),
@@ -99,8 +104,21 @@ public class ClubEventService {
     }
 
     private void validateSchedule(ClubEventRequest request) {
-        if (!request.endAt().isAfter(request.startAt())) {
-            throw new IllegalArgumentException("종료 일시는 시작 일시보다 늦어야 합니다.");
+        if (request.endDate().isBefore(request.startDate())) {
+            throw new IllegalArgumentException("종료일은 시작일보다 빠를 수 없습니다.");
+        }
+        if (request.startTime() != null && request.endTime() == null) {
+            throw new IllegalArgumentException("시작 시간이 있으면 종료 시간도 입력해야 합니다.");
+        }
+        if (request.startTime() == null && request.endTime() != null) {
+            throw new IllegalArgumentException("종료 시간만 단독으로 입력할 수 없습니다.");
+        }
+        if (
+            request.startTime() != null &&
+            request.startDate().equals(request.endDate()) &&
+            !request.endTime().isAfter(request.startTime())
+        ) {
+            throw new IllegalArgumentException("같은 날짜 일정의 종료 시간은 시작 시간보다 늦어야 합니다.");
         }
         if (
             request.recurrenceType() != null &&
@@ -111,7 +129,7 @@ public class ClubEventService {
         }
         if (
             request.recurrenceUntil() != null &&
-            request.recurrenceUntil().isBefore(request.startAt().toLocalDate())
+            request.recurrenceUntil().isBefore(request.startDate())
         ) {
             throw new IllegalArgumentException("반복 종료일은 시작일보다 빠를 수 없습니다.");
         }
@@ -141,12 +159,19 @@ public class ClubEventService {
     }
 
     private ClubEventResponse toResponse(ClubEvent event) {
+        LocalDate startDate = event.getStartDate() == null ? event.getEventDate() : event.getStartDate();
+        LocalDate endDate = event.getEndDate() == null ? startDate : event.getEndDate();
+
         return new ClubEventResponse(
             event.getId(),
             event.getTitle(),
             event.getType(),
             event.getStatus(),
             event.getEventDate(),
+            startDate,
+            endDate,
+            event.getStartTime(),
+            event.getEndTime(),
             event.getStartAt(),
             event.getEndAt(),
             event.getRecurrenceType(),

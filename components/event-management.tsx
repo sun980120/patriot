@@ -28,7 +28,8 @@ type ScheduleForm = {
   id: string | null;
   title: string;
   type: ClubEventType;
-  date: string;
+  startDate: string;
+  endDate: string;
   startTime: string;
   endTime: string;
   recurrenceType: ScheduleRecurrenceType;
@@ -40,8 +41,10 @@ type ScheduleForm = {
 type CalendarOccurrence = {
   event: ClubEvent;
   date: string;
-  startAt: Date;
-  endAt: Date;
+  startDate: string;
+  endDate: string;
+  startTime: string | null;
+  endTime: string | null;
 };
 
 const today = new Date();
@@ -50,16 +53,17 @@ const emptyForm: ScheduleForm = {
   id: null,
   title: '',
   type: 'TRAINING',
-  date: toDateInput(today),
-  startTime: '20:00',
-  endTime: '22:00',
+  startDate: toDateInput(today),
+  endDate: toDateInput(today),
+  startTime: '',
+  endTime: '',
   recurrenceType: 'NONE',
   recurrenceUntil: '',
   location: '',
   memo: '',
 };
 
-export function EventManagement({ events }: { events: ClubEvent[] }) {
+export function EventManagement({ events, canManage }: { events: ClubEvent[]; canManage: boolean }) {
   const [monthCursor, setMonthCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [form, setForm] = useState<ScheduleForm>(emptyForm);
   const [selectedDate, setSelectedDate] = useState(toDateInput(today));
@@ -76,7 +80,7 @@ export function EventManagement({ events }: { events: ClubEvent[] }) {
     occurrences.forEach((occurrence) => {
       grouped.set(occurrence.date, [...(grouped.get(occurrence.date) ?? []), occurrence]);
     });
-    grouped.forEach((items) => items.sort((a, b) => a.startAt.getTime() - b.startAt.getTime()));
+    grouped.forEach((items) => items.sort(compareOccurrences));
     return grouped;
   }, [occurrences]);
   const selectedOccurrences = occurrencesByDate.get(selectedDate) ?? [];
@@ -91,43 +95,60 @@ export function EventManagement({ events }: { events: ClubEvent[] }) {
 
   const selectDate = (date: string) => {
     setSelectedDate(date);
-    if (!form.id) {
-      updateForm({ date });
+    if (!form.id && canManage) {
+      updateForm({ startDate: date, endDate: date });
     }
   };
 
   const editEvent = (event: ClubEvent) => {
-    const startAt = new Date(event.start_at);
-    const endAt = new Date(event.end_at);
+    if (!canManage) return;
     setForm({
       id: event.id,
       title: event.title,
       type: event.type,
-      date: toDateInput(startAt),
-      startTime: toTimeInput(startAt),
-      endTime: toTimeInput(endAt),
+      startDate: event.start_date,
+      endDate: event.end_date,
+      startTime: event.start_time ?? '',
+      endTime: event.end_time ?? '',
       recurrenceType: event.recurrence_type,
       recurrenceUntil: event.recurrence_until ?? '',
       location: event.location ?? '',
       memo: event.memo ?? '',
     });
-    setSelectedDate(toDateInput(startAt));
+    setSelectedDate(event.start_date);
   };
 
   const submit = () => {
-    const title = form.title.trim();
-    const startAt = `${form.date}T${form.startTime}:00`;
-    const endAt = `${form.date}T${form.endTime}:00`;
+    if (!canManage) return;
 
-    if (!title || !form.date || !form.startTime || !form.endTime) {
+    const title = form.title.trim();
+    if (!title || !form.startDate || !form.endDate) {
       setToastTone('error');
-      setMessage('일정명, 날짜, 시작/종료 시간을 입력해 주세요.');
+      setMessage('일정명, 시작일, 종료일을 입력해 주세요.');
       return;
     }
 
-    if (new Date(startAt).getTime() >= new Date(endAt).getTime()) {
+    if (form.endDate < form.startDate) {
       setToastTone('error');
-      setMessage('종료 시간은 시작 시간보다 늦어야 합니다.');
+      setMessage('종료일은 시작일보다 빠를 수 없습니다.');
+      return;
+    }
+
+    if (form.startTime && !form.endTime) {
+      setToastTone('error');
+      setMessage('시작 시간이 있으면 종료 시간도 입력해야 합니다.');
+      return;
+    }
+
+    if (!form.startTime && form.endTime) {
+      setToastTone('error');
+      setMessage('종료 시간만 단독으로 입력할 수 없습니다.');
+      return;
+    }
+
+    if (form.startDate === form.endDate && form.startTime && form.endTime && form.endTime <= form.startTime) {
+      setToastTone('error');
+      setMessage('같은 날짜 일정의 종료 시간은 시작 시간보다 늦어야 합니다.');
       return;
     }
 
@@ -135,8 +156,10 @@ export function EventManagement({ events }: { events: ClubEvent[] }) {
       const payload = {
         title,
         type: form.type,
-        startAt,
-        endAt,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        startTime: form.startTime || null,
+        endTime: form.endTime || null,
         recurrenceType: form.recurrenceType,
         recurrenceUntil: form.recurrenceType === 'NONE' ? null : form.recurrenceUntil || null,
         location: form.location.trim() || null,
@@ -149,12 +172,13 @@ export function EventManagement({ events }: { events: ClubEvent[] }) {
       setToastTone(result.ok ? 'success' : 'error');
       setMessage(result.message ?? (result.ok ? '일정이 저장되었습니다.' : '일정 저장에 실패했습니다.'));
       if (result.ok) {
-        setForm({ ...emptyForm, date: form.date });
+        setForm({ ...emptyForm, startDate: form.startDate, endDate: form.startDate });
       }
     });
   };
 
   const removeEvent = (eventId: string) => {
+    if (!canManage) return;
     startTransition(async () => {
       const result = await deleteClubEventAction(eventId);
       setToastTone(result.ok ? 'success' : 'error');
@@ -170,8 +194,10 @@ export function EventManagement({ events }: { events: ClubEvent[] }) {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Calendar</p>
-              <h2 className="mt-2 text-3xl font-black text-slate-900">일정 캘린더</h2>
-              <p className="mt-2 text-sm text-slate-500">월간 캘린더에서 일정을 확인하고 반복 일정을 등록합니다.</p>
+              <h2 className="mt-2 text-3xl font-black text-slate-900">캘린더</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                {canManage ? '일정을 등록하고 월간 캘린더에서 확인합니다.' : '동호회 일정을 월간 캘린더에서 확인합니다.'}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => moveMonth(-1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">이전</button>
@@ -203,8 +229,8 @@ export function EventManagement({ events }: { events: ClubEvent[] }) {
                       <span className={`text-sm font-black ${selected ? 'text-brand-800' : 'text-slate-800'}`}>{day.getDate()}</span>
                       <div className="mt-2 space-y-1">
                         {dayOccurrences.slice(0, 3).map((occurrence) => (
-                          <div key={`${occurrence.event.id}-${occurrence.date}-${occurrence.startAt.toISOString()}`} className="truncate rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-bold text-white">
-                            {toTimeInput(occurrence.startAt)} {occurrence.event.title}
+                          <div key={occurrenceKey(occurrence)} className="truncate rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-bold text-white">
+                            {formatOccurrenceTime(occurrence)} {occurrence.event.title}
                           </div>
                         ))}
                         {dayOccurrences.length > 3 ? <div className="text-[11px] font-bold text-slate-500">+{dayOccurrences.length - 3}개</div> : null}
@@ -216,25 +242,37 @@ export function EventManagement({ events }: { events: ClubEvent[] }) {
             </div>
 
             <div className="space-y-4">
-              <ScheduleFormPanel form={form} isPending={isPending} onChange={updateForm} onSubmit={submit} onCancel={() => setForm({ ...emptyForm, date: selectedDate })} />
+              {canManage ? (
+                <ScheduleFormPanel
+                  form={form}
+                  isPending={isPending}
+                  onChange={updateForm}
+                  onSubmit={submit}
+                  onCancel={() => setForm({ ...emptyForm, startDate: selectedDate, endDate: selectedDate })}
+                />
+              ) : null}
               <section className="rounded-3xl border border-slate-200 bg-white p-4">
                 <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
                 <div className="mt-3 space-y-2">
                   {selectedOccurrences.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm font-semibold text-slate-500">등록된 일정이 없습니다.</div>
                   ) : selectedOccurrences.map((occurrence) => (
-                    <article key={`${occurrence.event.id}-${occurrence.startAt.toISOString()}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <article key={occurrenceKey(occurrence)} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-sm font-black text-slate-900">{occurrence.event.title}</p>
-                          <p className="mt-1 text-xs font-bold text-slate-500">{TYPE_LABELS[occurrence.event.type]} · {toTimeInput(occurrence.startAt)}-{toTimeInput(occurrence.endAt)}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-500">
+                            {TYPE_LABELS[occurrence.event.type]} · {formatDateRange(occurrence)} · {formatOccurrenceTime(occurrence)}
+                          </p>
                           {occurrence.event.recurrence_type !== 'NONE' ? <p className="mt-1 text-xs font-bold text-brand-700">{RECURRENCE_LABELS[occurrence.event.recurrence_type]}</p> : null}
                           {occurrence.event.location ? <p className="mt-1 text-xs text-slate-500">{occurrence.event.location}</p> : null}
                         </div>
-                        <div className="flex gap-1">
-                          <button type="button" onClick={() => editEvent(occurrence.event)} className="rounded-lg bg-white px-2 py-1 text-xs font-black text-slate-700">수정</button>
-                          <button type="button" onClick={() => removeEvent(occurrence.event.id)} className="rounded-lg bg-slate-900 px-2 py-1 text-xs font-black text-white">삭제</button>
-                        </div>
+                        {canManage ? (
+                          <div className="flex gap-1">
+                            <button type="button" onClick={() => editEvent(occurrence.event)} className="rounded-lg bg-white px-2 py-1 text-xs font-black text-slate-700">수정</button>
+                            <button type="button" onClick={() => removeEvent(occurrence.event.id)} className="rounded-lg bg-slate-900 px-2 py-1 text-xs font-black text-white">삭제</button>
+                          </div>
+                        ) : null}
                       </div>
                     </article>
                   ))}
@@ -277,32 +315,36 @@ function ScheduleFormPanel({
             </select>
           </label>
           <label className="grid gap-1 text-xs font-black text-slate-500">
-            날짜
-            <input type="date" value={form.date} onChange={(event) => onChange({ date: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
+            시작일
+            <input type="date" value={form.startDate} onChange={(event) => onChange({ startDate: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
           </label>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-xs font-black text-slate-500">
-            시작 시간
-            <input type="time" value={form.startTime} onChange={(event) => onChange({ startTime: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
+            종료일
+            <input type="date" value={form.endDate} onChange={(event) => onChange({ endDate: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
           </label>
-          <label className="grid gap-1 text-xs font-black text-slate-500">
-            종료 시간
-            <input type="time" value={form.endTime} onChange={(event) => onChange({ endTime: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
-          </label>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-xs font-black text-slate-500">
             반복
             <select value={form.recurrenceType} onChange={(event) => onChange({ recurrenceType: event.target.value as ScheduleRecurrenceType })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500">
               {Object.entries(RECURRENCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-xs font-black text-slate-500">
-            반복 종료일
-            <input type="date" value={form.recurrenceUntil} disabled={form.recurrenceType === 'NONE'} onChange={(event) => onChange({ recurrenceUntil: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500 disabled:bg-slate-100" />
+            시작 시간 선택
+            <input type="time" value={form.startTime} onChange={(event) => onChange({ startTime: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
+          </label>
+          <label className="grid gap-1 text-xs font-black text-slate-500">
+            종료 시간 선택
+            <input type="time" value={form.endTime} onChange={(event) => onChange({ endTime: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
           </label>
         </div>
+        <label className="grid gap-1 text-xs font-black text-slate-500">
+          반복 종료일
+          <input type="date" value={form.recurrenceUntil} disabled={form.recurrenceType === 'NONE'} onChange={(event) => onChange({ recurrenceUntil: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500 disabled:bg-slate-100" />
+        </label>
         <label className="grid gap-1 text-xs font-black text-slate-500">
           장소
           <input value={form.location} onChange={(event) => onChange({ location: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
@@ -333,42 +375,102 @@ function buildCalendarDays(cursor: Date) {
 
 function expandOccurrences(events: ClubEvent[], monthStart: Date, monthEnd: Date) {
   const occurrences: CalendarOccurrence[] = [];
-  events.forEach((event) => {
-    const baseStart = new Date(event.start_at);
-    const baseEnd = new Date(event.end_at);
-    const duration = baseEnd.getTime() - baseStart.getTime();
-    const recurrenceEnd = event.recurrence_until ? endOfDay(new Date(`${event.recurrence_until}T00:00:00`)) : monthEnd;
-    let cursor = new Date(baseStart);
+  const visibleStart = toDateInput(monthStart);
+  const visibleEnd = toDateInput(monthEnd);
 
-    while (cursor <= monthEnd && cursor <= recurrenceEnd) {
-      const occurrenceEnd = new Date(cursor.getTime() + duration);
-      if (occurrenceEnd >= monthStart && cursor <= monthEnd) {
-        occurrences.push({
-          event,
-          date: toDateInput(cursor),
-          startAt: new Date(cursor),
-          endAt: occurrenceEnd,
-        });
+  events.forEach((event) => {
+    const baseStart = event.start_date ?? event.event_date;
+    const baseEnd = event.end_date ?? baseStart;
+    const rangeDays = daysBetween(baseStart, baseEnd);
+    const recurrenceEnd = event.recurrence_until ?? visibleEnd;
+    let occurrenceStart = baseStart;
+
+    while (occurrenceStart <= visibleEnd && occurrenceStart <= recurrenceEnd) {
+      const occurrenceEnd = addDays(occurrenceStart, rangeDays);
+      if (occurrenceEnd >= visibleStart && occurrenceStart <= visibleEnd) {
+        let date = maxDateString(occurrenceStart, visibleStart);
+        const lastDate = minDateString(occurrenceEnd, visibleEnd);
+        while (date <= lastDate) {
+          occurrences.push({
+            event,
+            date,
+            startDate: occurrenceStart,
+            endDate: occurrenceEnd,
+            startTime: event.start_time,
+            endTime: event.end_time,
+          });
+          date = addDays(date, 1);
+        }
       }
+
       if (event.recurrence_type === 'NONE') break;
-      cursor = nextOccurrence(cursor, event.recurrence_type);
+      occurrenceStart = nextOccurrenceDate(occurrenceStart, event.recurrence_type);
     }
   });
+
   return occurrences;
 }
 
-function nextOccurrence(date: Date, recurrenceType: ScheduleRecurrenceType) {
-  const next = new Date(date);
+function compareOccurrences(a: CalendarOccurrence, b: CalendarOccurrence) {
+  const aTime = a.startTime ?? '00:00';
+  const bTime = b.startTime ?? '00:00';
+  if (aTime !== bTime) return aTime.localeCompare(bTime);
+  return a.event.title.localeCompare(b.event.title);
+}
+
+function nextOccurrenceDate(date: string, recurrenceType: ScheduleRecurrenceType) {
+  const next = parseDateInput(date);
   if (recurrenceType === 'DAILY') next.setDate(next.getDate() + 1);
   if (recurrenceType === 'WEEKLY') next.setDate(next.getDate() + 7);
   if (recurrenceType === 'MONTHLY') next.setMonth(next.getMonth() + 1);
-  return next;
+  return toDateInput(next);
 }
 
-function endOfDay(date: Date) {
-  const next = new Date(date);
-  next.setHours(23, 59, 59, 999);
-  return next;
+function daysBetween(startDate: string, endDate: string) {
+  return Math.max(0, Math.round((parseDateInput(endDate).getTime() - parseDateInput(startDate).getTime()) / 86400000));
+}
+
+function addDays(date: string, days: number) {
+  const next = parseDateInput(date);
+  next.setDate(next.getDate() + days);
+  return toDateInput(next);
+}
+
+function maxDateString(left: string, right: string) {
+  return left > right ? left : right;
+}
+
+function minDateString(left: string, right: string) {
+  return left < right ? left : right;
+}
+
+function parseDateInput(date: string) {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatDateRange(occurrence: CalendarOccurrence) {
+  return occurrence.startDate === occurrence.endDate ? occurrence.startDate : `${occurrence.startDate}~${occurrence.endDate}`;
+}
+
+function formatOccurrenceTime(occurrence: CalendarOccurrence) {
+  if (!occurrence.startTime || !occurrence.endTime) {
+    return '종일';
+  }
+  if (occurrence.startDate === occurrence.endDate) {
+    return `${occurrence.startTime}-${occurrence.endTime}`;
+  }
+  if (occurrence.date === occurrence.startDate) {
+    return `${occurrence.startTime} 시작`;
+  }
+  if (occurrence.date === occurrence.endDate) {
+    return `${occurrence.endTime} 종료`;
+  }
+  return '진행 중';
+}
+
+function occurrenceKey(occurrence: CalendarOccurrence) {
+  return `${occurrence.event.id}-${occurrence.startDate}-${occurrence.date}`;
 }
 
 function toDateInput(date: Date) {
@@ -376,8 +478,4 @@ function toDateInput(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function toTimeInput(date: Date) {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }

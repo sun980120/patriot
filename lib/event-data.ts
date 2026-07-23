@@ -9,8 +9,12 @@ type ClubEventApiResponse = {
   type: ClubEvent['type'];
   status: ClubEvent['status'];
   eventDate: string;
-  startAt: string;
-  endAt: string;
+  startDate: string;
+  endDate: string;
+  startTime: string | null;
+  endTime: string | null;
+  startAt: string | null;
+  endAt: string | null;
   recurrenceType: ClubEvent['recurrence_type'];
   recurrenceUntil: string | null;
   location: string | null;
@@ -31,6 +35,10 @@ function toClubEvent(row: ClubEventApiResponse): ClubEvent {
     type: row.type,
     status: row.status,
     event_date: row.eventDate,
+    start_date: row.startDate,
+    end_date: row.endDate,
+    start_time: row.startTime,
+    end_time: row.endTime,
     start_at: row.startAt,
     end_at: row.endAt,
     recurrence_type: row.recurrenceType,

@@ -129,8 +129,12 @@ export type ClubEvent = {
   type: ClubEventType;
   status: ClubEventStatus;
   event_date: string;
-  start_at: string;
-  end_at: string;
+  start_date: string;
+  end_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  start_at: string | null;
+  end_at: string | null;
   recurrence_type: ScheduleRecurrenceType;
   recurrence_until: string | null;
   location: string | null;

@@ -33,13 +33,13 @@ function buildLinks(profile: Profile | null): NavLink[] {
   const adminMode = profile.app_role === 'admin' || profile.app_role === 'super_admin';
   const links: NavLink[] = [
     { href: '/dashboard', label: '통합 대시보드' },
+    { href: '/calendar' as Route, label: '캘린더' },
     { href: '/tactics' as Route, label: '전술 보드' },
     { href: '/account', label: '사용자 정보 변경' },
   ];
 
   if (adminMode) {
     links.push({ href: '/admin/members', label: '회원 관리' });
-    links.push({ href: '/admin/events' as Route, label: '이벤트 관리' });
     links.push({ href: '/admin/finance', label: '세입/지출 관리' });
     links.push({ href: '/admin/audit-logs' as Route, label: '감사 로그' });
   }
