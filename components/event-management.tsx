@@ -267,9 +267,9 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
 
           <div className="mt-6 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
             <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
-              <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black text-slate-500">
-                {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
-                  <div key={day} className="px-2 py-3">{day}</div>
+              <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black">
+                {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
+                  <div key={day} className={`px-2 py-3 ${weekendTextClass(index)}`}>{day}</div>
                 ))}
               </div>
               <div className="grid grid-cols-7">
@@ -292,7 +292,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                       }}
                       className={`min-h-28 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
                     >
-                      <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected ? 'bg-brand-700 text-white' : 'text-slate-800'}`}>
+                      <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected ? 'bg-brand-700 text-white' : weekendTextClass(day.getDay())}`}>
                         {day.getDate()}
                       </span>
                       <div className="mt-2 space-y-1">
@@ -534,6 +534,12 @@ function buildCalendarDays(cursor: Date) {
     date.setDate(start.getDate() + index);
     return date;
   });
+}
+
+function weekendTextClass(dayOfWeek: number) {
+  if (dayOfWeek === 0) return 'text-rose-600';
+  if (dayOfWeek === 6) return 'text-blue-600';
+  return 'text-slate-800';
 }
 
 function expandOccurrences(events: ClubEvent[], monthStart: Date, monthEnd: Date) {
