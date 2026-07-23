@@ -438,13 +438,17 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                   {selectedOccurrences.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm font-semibold text-slate-500">등록된 일정이 없습니다.</div>
                   ) : (
-                    <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+                    <div className={`-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2 ${selectedOccurrences.length === 1 ? 'pr-1' : ''}`}>
                       {selectedOccurrences.map((occurrence) => (
                         <button
                           type="button"
                           key={occurrenceKey(occurrence)}
                           onClick={() => selectOccurrence(occurrence)}
-                          className={`min-w-[240px] snap-start rounded-2xl border p-4 text-left transition sm:min-w-[280px] ${
+                          className={`snap-start rounded-2xl border p-4 text-left transition ${
+                            selectedOccurrences.length === 1
+                              ? 'w-full'
+                              : 'min-w-[240px] sm:min-w-[280px]'
+                          } ${
                             selectedOccurrenceKey === occurrenceKey(occurrence)
                               ? TYPE_STYLES[occurrence.event.type].listSelected
                               : TYPE_STYLES[occurrence.event.type].list
@@ -747,16 +751,22 @@ function formatOccurrenceTime(occurrence: CalendarOccurrence) {
   if (!occurrence.startTime || !occurrence.endTime) {
     return '종일';
   }
+  const startTime = formatTime(occurrence.startTime);
+  const endTime = formatTime(occurrence.endTime);
   if (occurrence.startDate === occurrence.endDate) {
-    return `${occurrence.startTime}-${occurrence.endTime}`;
+    return `${startTime}-${endTime}`;
   }
   if (occurrence.date === occurrence.startDate) {
-    return `${occurrence.startTime} 시작`;
+    return `${startTime} 시작`;
   }
   if (occurrence.date === occurrence.endDate) {
-    return `${occurrence.endTime} 종료`;
+    return `${endTime} 종료`;
   }
   return '진행 중';
+}
+
+function formatTime(time: string) {
+  return time.slice(0, 5);
 }
 
 function occurrenceKey(occurrence: CalendarOccurrence) {
