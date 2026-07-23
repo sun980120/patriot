@@ -20,6 +20,21 @@ body {
   backdrop-filter: blur(14px);
 }
 
+.calendar-month-transition {
+  animation: calendar-month-enter 220ms ease-out;
+}
+
+@keyframes calendar-month-enter {
+  from {
+    opacity: 0.72;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 767px) {
   input,
   select,

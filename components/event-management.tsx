@@ -276,7 +276,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
           </div>
 
           <div className={`mt-4 grid gap-4 transition-all duration-300 ease-out ${showSelectedDatePanel ? 'lg:grid-cols-[1.25fr_0.75fr]' : 'lg:grid-cols-1'}`}>
-            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+            <div key={`${monthCursor.getFullYear()}-${monthCursor.getMonth()}`} className="calendar-month-transition overflow-hidden rounded-3xl border border-slate-200 bg-white">
               <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black">
                 {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
                   <div key={day} className={`px-2 py-3 ${weekendTextClass(index)}`}>{day}</div>
@@ -300,7 +300,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                           selectDate(date);
                         }
                       }}
-                      className={`min-h-24 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected && showSelectedDatePanel ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
+                      className={`min-h-20 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected && showSelectedDatePanel ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
                     >
                       <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected && showSelectedDatePanel ? 'bg-brand-700 text-white' : weekendTextClass(day.getDay())}`}>
                         {day.getDate()}
@@ -336,7 +336,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
               className={`overflow-hidden transition-all duration-300 ease-out ${
                 showSelectedDatePanel
                   ? 'max-h-[1600px] opacity-100 translate-x-0'
-                  : 'max-h-0 opacity-0 translate-x-4 pointer-events-none lg:max-h-none'
+                  : 'max-h-0 opacity-0 translate-x-4 pointer-events-none'
               }`}
             >
               <div className="space-y-4">
