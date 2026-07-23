@@ -4,6 +4,8 @@ export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 export type GradeSource = 'auto' | 'manual';
 export type AdditionalChargeCategory = 'JOIN_FEE' | 'UNIFORM_FEE' | 'DINNER_FEE' | 'TOURNAMENT_FEE' | 'ETC_FEE';
 export type AdditionalChargeStatus = 'UNPAID' | 'PAID';
+export type ClubEventType = 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
+export type ClubEventStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
 
 export type Profile = {
   id: string;
@@ -108,6 +110,24 @@ export type AuditLog = {
 export type AuditLogActor = {
   actor_id: string;
   actor_name: string;
+};
+
+export type ClubEventParticipant = {
+  member_id: string;
+  member_name: string;
+  member_username: string | null;
+};
+
+export type ClubEvent = {
+  id: string;
+  title: string;
+  type: ClubEventType;
+  status: ClubEventStatus;
+  event_date: string;
+  location: string | null;
+  memo: string | null;
+  created_at: string | null;
+  participants: ClubEventParticipant[];
 };
 
 export type DashboardBundle = {
