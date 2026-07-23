@@ -354,7 +354,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                           selectDate(date);
                         }
                       }}
-                      className={`min-h-24 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected && showSelectedDatePanel ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
+                      className={`min-h-28 cursor-pointer border-t border-slate-100 p-2 text-left transition ${selected && showSelectedDatePanel ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
                     >
                       <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-black transition ${selected && showSelectedDatePanel ? 'bg-brand-700 text-white' : weekendTextClass(day.getDay())}`}>
                         {day.getDate()}
