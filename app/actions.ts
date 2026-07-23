@@ -496,6 +496,7 @@ export async function deleteExpenseEntryAction(id: string): Promise<ActionResult
 
 export async function createAdditionalChargeGroupAction(args: {
   fiscalYearId: string;
+  clubEventId?: string | null;
   title: string;
   category: 'JOIN_FEE' | 'UNIFORM_FEE' | 'DINNER_FEE' | 'TOURNAMENT_FEE' | 'ETC_FEE';
   eventDate?: string | null;
@@ -704,6 +705,24 @@ export async function updateClubEventStatusAction(
 
   refreshHome();
   return { ok: true, message: '이벤트 상태가 변경되었습니다.' };
+}
+
+export async function updateEventParticipantAttendanceAction(
+  eventId: string,
+  memberId: string,
+  attendanceStatus: 'REGISTERED' | 'PRESENT' | 'ABSENT'
+): Promise<ActionResult> {
+  const result = await serverApiFetch(`/api/events/${eventId}/participants/${memberId}/attendance`, {
+    method: 'PATCH',
+    body: JSON.stringify({ attendanceStatus }),
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message ?? '참가자 출석 상태 변경에 실패했습니다.' };
+  }
+
+  refreshHome();
+  return { ok: true, message: '참가자 출석 상태가 변경되었습니다.' };
 }
 
 export async function deleteClubEventAction(eventId: string): Promise<ActionResult> {

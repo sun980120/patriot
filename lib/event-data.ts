@@ -16,6 +16,7 @@ type ClubEventApiResponse = {
     memberId: string;
     memberName: string;
     memberUsername: string | null;
+    attendanceStatus: ClubEvent['participants'][number]['attendance_status'];
   }>;
 };
 
@@ -33,6 +34,7 @@ function toClubEvent(row: ClubEventApiResponse): ClubEvent {
       member_id: participant.memberId,
       member_name: participant.memberName,
       member_username: participant.memberUsername,
+      attendance_status: participant.attendanceStatus,
     })),
   };
 }

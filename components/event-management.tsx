@@ -2,13 +2,15 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import {
+  createAdditionalChargeGroupAction,
   createClubEventAction,
   deleteClubEventAction,
   updateClubEventAction,
+  updateEventParticipantAttendanceAction,
   updateClubEventStatusAction,
 } from '@/app/actions';
 import { HIDDEN_PROFILE_EMAILS } from '@/lib/constants';
-import type { ClubEvent, ClubEventStatus, ClubEventType, Profile } from '@/lib/types';
+import type { ClubEvent, ClubEventStatus, ClubEventType, EventAttendanceStatus, FiscalYear, Profile } from '@/lib/types';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
 const TYPE_LABELS: Record<ClubEventType, string> = {
@@ -23,6 +25,12 @@ const STATUS_LABELS: Record<ClubEventStatus, string> = {
   PLANNED: '예정',
   COMPLETED: '완료',
   CANCELLED: '취소',
+};
+
+const ATTENDANCE_LABELS: Record<EventAttendanceStatus, string> = {
+  REGISTERED: '등록',
+  PRESENT: '참석',
+  ABSENT: '불참',
 };
 
 type EventForm = {
@@ -45,8 +53,19 @@ const emptyForm: EventForm = {
   participantMemberIds: [],
 };
 
-export function EventManagement({ events, profiles }: { events: ClubEvent[]; profiles: Profile[] }) {
+export function EventManagement({
+  events,
+  profiles,
+  fiscalYears,
+  selectedFiscalYearId,
+}: {
+  events: ClubEvent[];
+  profiles: Profile[];
+  fiscalYears: FiscalYear[];
+  selectedFiscalYearId: string | null;
+}) {
   const [form, setForm] = useState<EventForm>(emptyForm);
+  const [chargeForms, setChargeForms] = useState<Record<string, { fiscalYearId: string; amount: string }>>({});
   const [participantSearch, setParticipantSearch] = useState('');
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
@@ -162,6 +181,60 @@ export function EventManagement({ events, profiles }: { events: ClubEvent[]; pro
       const result = await deleteClubEventAction(eventId);
       setToastTone(result.ok ? 'success' : 'error');
       setMessage(result.message ?? (result.ok ? '이벤트가 삭제되었습니다.' : '이벤트 삭제에 실패했습니다.'));
+    });
+  };
+
+  const updateChargeForm = (eventId: string, patch: Partial<{ fiscalYearId: string; amount: string }>) => {
+    setChargeForms((current) => ({
+      ...current,
+      [eventId]: {
+        fiscalYearId: current[eventId]?.fiscalYearId ?? selectedFiscalYearId ?? fiscalYears[0]?.id ?? '',
+        amount: current[eventId]?.amount ?? '',
+        ...patch,
+      },
+    }));
+  };
+
+  const changeAttendance = (eventId: string, memberId: string, attendanceStatus: EventAttendanceStatus) => {
+    startTransition(async () => {
+      const result = await updateEventParticipantAttendanceAction(eventId, memberId, attendanceStatus);
+      setToastTone(result.ok ? 'success' : 'error');
+      setMessage(result.message ?? (result.ok ? '출석 상태가 변경되었습니다.' : '출석 상태 변경에 실패했습니다.'));
+    });
+  };
+
+  const createChargeFromEvent = (event: ClubEvent) => {
+    const chargeForm = chargeForms[event.id] ?? {
+      fiscalYearId: selectedFiscalYearId ?? fiscalYears[0]?.id ?? '',
+      amount: '',
+    };
+    const amount = Number(chargeForm.amount.replace(/\D/g, ''));
+    const presentParticipants = event.participants.filter((participant) => participant.attendance_status === 'PRESENT');
+
+    if (!chargeForm.fiscalYearId || amount <= 0 || presentParticipants.length === 0) {
+      setToastTone('error');
+      setMessage('기준 연도, 1인당 금액, 참석자를 확인해 주세요.');
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await createAdditionalChargeGroupAction({
+        fiscalYearId: chargeForm.fiscalYearId,
+        clubEventId: event.id,
+        title: event.title,
+        category: event.type === 'DINNER' ? 'DINNER_FEE' : event.type === 'TOURNAMENT' ? 'TOURNAMENT_FEE' : 'ETC_FEE',
+        eventDate: event.event_date,
+        supportAmount: 0,
+        actualCost: amount * presentParticipants.length,
+        memo: event.memo,
+        participantMemberIds: presentParticipants.map((participant) => participant.member_id),
+        amountPerParticipant: amount,
+      });
+      setToastTone(result.ok ? 'success' : 'error');
+      setMessage(result.message ?? (result.ok ? '이벤트 추가비용이 생성되었습니다.' : '이벤트 추가비용 생성에 실패했습니다.'));
+      if (result.ok) {
+        updateChargeForm(event.id, { amount: '' });
+      }
     });
   };
 
@@ -288,8 +361,32 @@ export function EventManagement({ events, profiles }: { events: ClubEvent[]; pro
           </div>
         </section>
 
-        <EventList title="예정 이벤트" events={plannedEvents} onEdit={editEvent} onStatus={changeStatus} onDelete={removeEvent} />
-        <EventList title="종료 / 취소 이벤트" events={closedEvents} onEdit={editEvent} onStatus={changeStatus} onDelete={removeEvent} />
+        <EventList
+          title="예정 이벤트"
+          events={plannedEvents}
+          fiscalYears={fiscalYears}
+          selectedFiscalYearId={selectedFiscalYearId}
+          chargeForms={chargeForms}
+          onChargeFormChange={updateChargeForm}
+          onCreateCharge={createChargeFromEvent}
+          onAttendance={changeAttendance}
+          onEdit={editEvent}
+          onStatus={changeStatus}
+          onDelete={removeEvent}
+        />
+        <EventList
+          title="종료 / 취소 이벤트"
+          events={closedEvents}
+          fiscalYears={fiscalYears}
+          selectedFiscalYearId={selectedFiscalYearId}
+          chargeForms={chargeForms}
+          onChargeFormChange={updateChargeForm}
+          onCreateCharge={createChargeFromEvent}
+          onAttendance={changeAttendance}
+          onEdit={editEvent}
+          onStatus={changeStatus}
+          onDelete={removeEvent}
+        />
       </div>
     </>
   );
@@ -298,12 +395,24 @@ export function EventManagement({ events, profiles }: { events: ClubEvent[]; pro
 function EventList({
   title,
   events,
+  fiscalYears,
+  selectedFiscalYearId,
+  chargeForms,
+  onChargeFormChange,
+  onCreateCharge,
+  onAttendance,
   onEdit,
   onStatus,
   onDelete,
 }: {
   title: string;
   events: ClubEvent[];
+  fiscalYears: FiscalYear[];
+  selectedFiscalYearId: string | null;
+  chargeForms: Record<string, { fiscalYearId: string; amount: string }>;
+  onChargeFormChange: (eventId: string, patch: Partial<{ fiscalYearId: string; amount: string }>) => void;
+  onCreateCharge: (event: ClubEvent) => void;
+  onAttendance: (eventId: string, memberId: string, attendanceStatus: EventAttendanceStatus) => void;
   onEdit: (event: ClubEvent) => void;
   onStatus: (eventId: string, status: ClubEventStatus) => void;
   onDelete: (eventId: string) => void;
@@ -314,7 +423,14 @@ function EventList({
       <div className="mt-4 space-y-3">
         {events.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm font-semibold text-slate-500">등록된 이벤트가 없습니다.</div>
-        ) : events.map((event) => (
+        ) : events.map((event) => {
+          const presentCount = event.participants.filter((participant) => participant.attendance_status === 'PRESENT').length;
+          const chargeForm = chargeForms[event.id] ?? {
+            fiscalYearId: selectedFiscalYearId ?? fiscalYears[0]?.id ?? '',
+            amount: '',
+          };
+
+          return (
           <article key={event.id} className="rounded-3xl border border-slate-200 bg-white p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -324,7 +440,7 @@ function EventList({
                   <span className="rounded-full bg-slate-100 px-3 py-1">{event.event_date}</span>
                 </div>
                 <h4 className="mt-3 text-lg font-black text-slate-900">{event.title}</h4>
-                <p className="mt-1 text-sm text-slate-500">{event.location || '장소 미정'} · 참가 {event.participants.length}명</p>
+                <p className="mt-1 text-sm text-slate-500">{event.location || '장소 미정'} · 참가 {event.participants.length}명 · 참석 {presentCount}명</p>
                 {event.memo ? <p className="mt-2 text-sm leading-6 text-slate-600">{event.memo}</p> : null}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -336,16 +452,52 @@ function EventList({
               </div>
             </div>
             {event.participants.length > 0 ? (
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {event.participants.map((participant) => (
-                  <span key={participant.member_id} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                    {participant.member_name}
-                  </span>
+                  <div key={participant.member_id} className="flex items-center justify-between gap-2 rounded-2xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
+                    <span className="min-w-0 truncate">{participant.member_name}</span>
+                    <select
+                      value={participant.attendance_status}
+                      onChange={(changeEvent) => onAttendance(event.id, participant.member_id, changeEvent.target.value as EventAttendanceStatus)}
+                      className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-black text-slate-700"
+                    >
+                      {Object.entries(ATTENDANCE_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
                 ))}
               </div>
             ) : null}
+            {event.participants.length > 0 ? (
+              <div className="mt-4 grid gap-2 rounded-2xl border border-brand-100 bg-brand-50 p-3 sm:grid-cols-[1fr_1fr_auto]">
+                <select
+                  value={chargeForm.fiscalYearId}
+                  onChange={(changeEvent) => onChargeFormChange(event.id, { fiscalYearId: changeEvent.target.value })}
+                  className="h-11 rounded-xl border border-white bg-white px-3 text-sm font-bold text-slate-700"
+                >
+                  {fiscalYears.map((year) => (
+                    <option key={year.id} value={year.id}>{year.year}년</option>
+                  ))}
+                </select>
+                <input
+                  value={chargeForm.amount}
+                  onChange={(changeEvent) => onChargeFormChange(event.id, { amount: changeEvent.target.value.replace(/\D/g, '') })}
+                  placeholder="참석자 1인당 금액"
+                  className="h-11 rounded-xl border border-white bg-white px-3 text-sm font-bold text-slate-700"
+                />
+                <button
+                  type="button"
+                  onClick={() => onCreateCharge(event)}
+                  className="h-11 rounded-xl bg-brand-700 px-4 text-sm font-black text-white transition hover:bg-brand-800"
+                >
+                  추가비용 생성
+                </button>
+              </div>
+            ) : null}
           </article>
-        ))}
+        );
+        })}
       </div>
     </section>
   );

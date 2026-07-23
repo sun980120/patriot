@@ -11,6 +11,7 @@ import java.util.UUID;
 
 public record CreateChargeGroupRequest(
     @NotNull UUID fiscalYearId,
+    UUID clubEventId,
     @NotBlank String title,
     @NotNull AdditionalChargeCategory category,
     LocalDate eventDate,

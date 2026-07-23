@@ -6,6 +6,7 @@ export type AdditionalChargeCategory = 'JOIN_FEE' | 'UNIFORM_FEE' | 'DINNER_FEE'
 export type AdditionalChargeStatus = 'UNPAID' | 'PAID';
 export type ClubEventType = 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
 export type ClubEventStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
+export type EventAttendanceStatus = 'REGISTERED' | 'PRESENT' | 'ABSENT';
 
 export type Profile = {
   id: string;
@@ -81,6 +82,8 @@ export type ParticipantCharge = {
 export type ChargeGroup = {
   id: string;
   fiscal_year_id: string;
+  club_event_id: string | null;
+  club_event_title: string | null;
   title: string;
   category: AdditionalChargeCategory;
   event_date: string | null;
@@ -116,6 +119,7 @@ export type ClubEventParticipant = {
   member_id: string;
   member_name: string;
   member_username: string | null;
+  attendance_status: EventAttendanceStatus;
 };
 
 export type ClubEvent = {

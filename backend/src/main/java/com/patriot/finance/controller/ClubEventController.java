@@ -3,6 +3,7 @@ package com.patriot.finance.controller;
 import com.patriot.finance.dto.ClubEventRequest;
 import com.patriot.finance.dto.ClubEventResponse;
 import com.patriot.finance.dto.ClubEventStatusRequest;
+import com.patriot.finance.dto.EventAttendanceRequest;
 import com.patriot.finance.service.ClubEventService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -50,6 +51,16 @@ public class ClubEventController {
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ClubEventResponse updateStatus(@PathVariable UUID eventId, @Valid @RequestBody ClubEventStatusRequest request) {
         return clubEventService.updateStatus(eventId, request.status());
+    }
+
+    @PatchMapping("/{eventId}/participants/{memberId}/attendance")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ClubEventResponse updateAttendance(
+        @PathVariable UUID eventId,
+        @PathVariable UUID memberId,
+        @Valid @RequestBody EventAttendanceRequest request
+    ) {
+        return clubEventService.updateAttendance(eventId, memberId, request.attendanceStatus());
     }
 
     @DeleteMapping("/{eventId}")

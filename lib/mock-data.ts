@@ -64,6 +64,8 @@ export const mockBundle: DashboardBundle = {
     {
       id: 'cg-1',
       fiscal_year_id: fiscal2026,
+      club_event_id: null,
+      club_event_title: null,
       title: '춘계 대회 참가 분담금',
       category: 'TOURNAMENT_FEE',
       event_date: '2026-06-10',

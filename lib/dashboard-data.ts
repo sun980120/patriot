@@ -50,6 +50,8 @@ type DashboardApiResponse = {
   chargeGroups: Array<{
     id: string;
     fiscalYearId: string;
+    clubEventId: string | null;
+    clubEventTitle: string | null;
     title: string;
     category: ChargeGroup['category'];
     eventDate: string | null;
@@ -134,6 +136,8 @@ function toChargeGroup(row: DashboardApiResponse['chargeGroups'][number]): Charg
   return {
     id: row.id,
     fiscal_year_id: row.fiscalYearId,
+    club_event_id: row.clubEventId ?? null,
+    club_event_title: row.clubEventTitle ?? null,
     title: row.title,
     category: row.category,
     event_date: row.eventDate,

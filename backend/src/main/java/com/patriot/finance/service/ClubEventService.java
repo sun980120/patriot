@@ -5,6 +5,7 @@ import com.patriot.finance.domain.entity.EventParticipant;
 import com.patriot.finance.domain.entity.Member;
 import com.patriot.finance.domain.enums.ApprovalStatus;
 import com.patriot.finance.domain.enums.ClubEventStatus;
+import com.patriot.finance.domain.enums.EventAttendanceStatus;
 import com.patriot.finance.dto.ClubEventRequest;
 import com.patriot.finance.dto.ClubEventResponse;
 import com.patriot.finance.dto.EventParticipantResponse;
@@ -69,6 +70,14 @@ public class ClubEventService {
     }
 
     @Transactional
+    public ClubEventResponse updateAttendance(UUID eventId, UUID memberId, EventAttendanceStatus attendanceStatus) {
+        EventParticipant participant = eventParticipantRepository.findByEventIdAndMemberId(eventId, memberId)
+            .orElseThrow(() -> new IllegalArgumentException("이벤트 참가자를 찾을 수 없습니다."));
+        participant.updateAttendanceStatus(attendanceStatus);
+        return toResponse(participant.getEvent());
+    }
+
+    @Transactional
     public void delete(UUID eventId) {
         ClubEvent event = getEvent(eventId);
         eventParticipantRepository.deleteByEventId(event.getId());
@@ -117,7 +126,8 @@ public class ClubEventService {
                 .map(participant -> new EventParticipantResponse(
                     participant.getMember().getId(),
                     participant.getMember().getFullName(),
-                    participant.getMember().getUsername()
+                    participant.getMember().getUsername(),
+                    participant.getAttendanceStatus()
                 ))
                 .toList()
         );

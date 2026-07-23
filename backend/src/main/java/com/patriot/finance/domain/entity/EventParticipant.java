@@ -1,6 +1,9 @@
 package com.patriot.finance.domain.entity;
 
+import com.patriot.finance.domain.enums.EventAttendanceStatus;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -27,9 +30,17 @@ public class EventParticipant extends BaseEntity {
     @JoinColumn(name = "member_id", nullable = false)
     private Member member;
 
+    @Enumerated(EnumType.STRING)
+    private EventAttendanceStatus attendanceStatus;
+
     @Builder
-    private EventParticipant(ClubEvent event, Member member) {
+    private EventParticipant(ClubEvent event, Member member, EventAttendanceStatus attendanceStatus) {
         this.event = event;
         this.member = member;
+        this.attendanceStatus = attendanceStatus == null ? EventAttendanceStatus.REGISTERED : attendanceStatus;
+    }
+
+    public void updateAttendanceStatus(EventAttendanceStatus attendanceStatus) {
+        this.attendanceStatus = attendanceStatus;
     }
 }
