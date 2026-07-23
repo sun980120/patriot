@@ -25,6 +25,50 @@ const RECURRENCE_LABELS: Record<ScheduleRecurrenceType, string> = {
   MONTHLY: '매월',
 };
 
+const TYPE_STYLES: Record<ClubEventType, {
+  item: string;
+  itemSelected: string;
+  list: string;
+  listSelected: string;
+  badge: string;
+}> = {
+  TOURNAMENT: {
+    item: 'bg-rose-600 text-white hover:bg-rose-700',
+    itemSelected: 'bg-rose-800 text-white',
+    list: 'border-rose-200 bg-rose-50 hover:border-rose-300',
+    listSelected: 'border-rose-500 bg-rose-100',
+    badge: 'bg-rose-100 text-rose-800',
+  },
+  TRAINING: {
+    item: 'bg-emerald-600 text-white hover:bg-emerald-700',
+    itemSelected: 'bg-emerald-800 text-white',
+    list: 'border-emerald-200 bg-emerald-50 hover:border-emerald-300',
+    listSelected: 'border-emerald-500 bg-emerald-100',
+    badge: 'bg-emerald-100 text-emerald-800',
+  },
+  DINNER: {
+    item: 'bg-amber-600 text-white hover:bg-amber-700',
+    itemSelected: 'bg-amber-800 text-white',
+    list: 'border-amber-200 bg-amber-50 hover:border-amber-300',
+    listSelected: 'border-amber-500 bg-amber-100',
+    badge: 'bg-amber-100 text-amber-800',
+  },
+  MEETING: {
+    item: 'bg-sky-600 text-white hover:bg-sky-700',
+    itemSelected: 'bg-sky-800 text-white',
+    list: 'border-sky-200 bg-sky-50 hover:border-sky-300',
+    listSelected: 'border-sky-500 bg-sky-100',
+    badge: 'bg-sky-100 text-sky-800',
+  },
+  ETC: {
+    item: 'bg-slate-600 text-white hover:bg-slate-700',
+    itemSelected: 'bg-slate-800 text-white',
+    list: 'border-slate-200 bg-slate-50 hover:border-slate-300',
+    listSelected: 'border-slate-500 bg-slate-100',
+    badge: 'bg-slate-100 text-slate-800',
+  },
+};
+
 type ScheduleForm = {
   id: string | null;
   title: string;
@@ -254,8 +298,8 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                             onClick={() => selectOccurrence(occurrence)}
                             className={`block w-full truncate rounded-lg px-2 py-1 text-left text-[11px] font-bold transition ${
                               selectedOccurrenceKey === occurrenceKey(occurrence)
-                                ? 'bg-brand-700 text-white'
-                                : 'bg-slate-900 text-white hover:bg-brand-800'
+                                ? TYPE_STYLES[occurrence.event.type].itemSelected
+                                : TYPE_STYLES[occurrence.event.type].item
                             }`}
                           >
                             {occurrence.event.title}
@@ -291,8 +335,8 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                       onClick={() => selectOccurrence(occurrence)}
                       className={`w-full rounded-2xl border p-3 text-left transition ${
                         selectedOccurrenceKey === occurrenceKey(occurrence)
-                          ? 'border-brand-500 bg-brand-50'
-                          : 'border-slate-200 bg-slate-50 hover:border-brand-200 hover:bg-white'
+                          ? TYPE_STYLES[occurrence.event.type].listSelected
+                          : TYPE_STYLES[occurrence.event.type].list
                       }`}
                     >
                       <p className="truncate text-sm font-black text-slate-900">{occurrence.event.title}</p>
@@ -338,7 +382,9 @@ function ScheduleDetailPanel({
     <section className="rounded-3xl border border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-black text-brand-700">{TYPE_LABELS[occurrence.event.type]}</p>
+          <p className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black ${TYPE_STYLES[occurrence.event.type].badge}`}>
+            {TYPE_LABELS[occurrence.event.type]}
+          </p>
           <h3 className="mt-1 text-xl font-black text-slate-900">{occurrence.event.title}</h3>
         </div>
         {canManage && occurrence.event.recurrence_type === 'NONE' ? (
