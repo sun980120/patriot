@@ -7,6 +7,7 @@ export type AdditionalChargeStatus = 'UNPAID' | 'PAID';
 export type ClubEventType = 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
 export type ClubEventStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
 export type EventAttendanceStatus = 'REGISTERED' | 'PRESENT' | 'ABSENT';
+export type ScheduleRecurrenceType = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 export type Profile = {
   id: string;
@@ -128,6 +129,10 @@ export type ClubEvent = {
   type: ClubEventType;
   status: ClubEventStatus;
   event_date: string;
+  start_at: string;
+  end_at: string;
+  recurrence_type: ScheduleRecurrenceType;
+  recurrence_until: string | null;
   location: string | null;
   memo: string | null;
   created_at: string | null;

@@ -651,10 +651,12 @@ export async function sendAdditionalChargeFiscalYearReminderAction(fiscalYearId:
 export async function createClubEventAction(args: {
   title: string;
   type: 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
-  eventDate: string;
+  startAt: string;
+  endAt: string;
+  recurrenceType: 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  recurrenceUntil?: string | null;
   location?: string | null;
   memo?: string | null;
-  participantMemberIds: string[];
 }): Promise<ActionResult> {
   const result = await serverApiFetch('/api/events', {
     method: 'POST',
@@ -672,10 +674,12 @@ export async function createClubEventAction(args: {
 export async function updateClubEventAction(eventId: string, args: {
   title: string;
   type: 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | 'ETC';
-  eventDate: string;
+  startAt: string;
+  endAt: string;
+  recurrenceType: 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  recurrenceUntil?: string | null;
   location?: string | null;
   memo?: string | null;
-  participantMemberIds: string[];
 }): Promise<ActionResult> {
   const result = await serverApiFetch(`/api/events/${eventId}`, {
     method: 'PUT',

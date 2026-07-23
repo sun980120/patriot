@@ -23,12 +23,7 @@ export default async function AdminEventsPage() {
       {!adminMode ? (
         <AccessDenied />
       ) : eventResult.ok ? (
-        <EventManagement
-          events={eventResult.events}
-          profiles={data.bundle.profiles}
-          fiscalYears={data.bundle.fiscalYears}
-          selectedFiscalYearId={data.bundle.selectedYear?.id ?? null}
-        />
+        <EventManagement events={eventResult.events} />
       ) : (
         <section className="rounded-[28px] border border-rose-200 bg-white/90 p-6 shadow-soft">
           <p className="text-sm font-black text-rose-600">이벤트 목록을 불러오지 못했습니다.</p>

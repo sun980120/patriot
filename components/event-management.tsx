@@ -2,15 +2,11 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import {
-  createAdditionalChargeGroupAction,
   createClubEventAction,
   deleteClubEventAction,
   updateClubEventAction,
-  updateEventParticipantAttendanceAction,
-  updateClubEventStatusAction,
 } from '@/app/actions';
-import { HIDDEN_PROFILE_EMAILS } from '@/lib/constants';
-import type { ClubEvent, ClubEventStatus, ClubEventType, EventAttendanceStatus, FiscalYear, Profile } from '@/lib/types';
+import type { ClubEvent, ClubEventType, ScheduleRecurrenceType } from '@/lib/types';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
 const TYPE_LABELS: Record<ClubEventType, string> = {
@@ -21,158 +17,140 @@ const TYPE_LABELS: Record<ClubEventType, string> = {
   ETC: '기타',
 };
 
-const STATUS_LABELS: Record<ClubEventStatus, string> = {
-  PLANNED: '예정',
-  COMPLETED: '완료',
-  CANCELLED: '취소',
+const RECURRENCE_LABELS: Record<ScheduleRecurrenceType, string> = {
+  NONE: '반복 없음',
+  DAILY: '매일',
+  WEEKLY: '매주',
+  MONTHLY: '매월',
 };
 
-const ATTENDANCE_LABELS: Record<EventAttendanceStatus, string> = {
-  REGISTERED: '등록',
-  PRESENT: '참석',
-  ABSENT: '불참',
-};
-
-type EventForm = {
+type ScheduleForm = {
   id: string | null;
   title: string;
   type: ClubEventType;
-  eventDate: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  recurrenceType: ScheduleRecurrenceType;
+  recurrenceUntil: string;
   location: string;
   memo: string;
-  participantMemberIds: string[];
 };
 
-const emptyForm: EventForm = {
+type CalendarOccurrence = {
+  event: ClubEvent;
+  date: string;
+  startAt: Date;
+  endAt: Date;
+};
+
+const today = new Date();
+
+const emptyForm: ScheduleForm = {
   id: null,
   title: '',
-  type: 'TOURNAMENT',
-  eventDate: '',
+  type: 'TRAINING',
+  date: toDateInput(today),
+  startTime: '20:00',
+  endTime: '22:00',
+  recurrenceType: 'NONE',
+  recurrenceUntil: '',
   location: '',
   memo: '',
-  participantMemberIds: [],
 };
 
-export function EventManagement({
-  events,
-  profiles,
-  fiscalYears,
-  selectedFiscalYearId,
-}: {
-  events: ClubEvent[];
-  profiles: Profile[];
-  fiscalYears: FiscalYear[];
-  selectedFiscalYearId: string | null;
-}) {
-  const [form, setForm] = useState<EventForm>(emptyForm);
-  const [chargeForms, setChargeForms] = useState<Record<string, { fiscalYearId: string; amount: string }>>({});
-  const [participantSearch, setParticipantSearch] = useState('');
+export function EventManagement({ events }: { events: ClubEvent[] }) {
+  const [monthCursor, setMonthCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [form, setForm] = useState<ScheduleForm>(emptyForm);
+  const [selectedDate, setSelectedDate] = useState(toDateInput(today));
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
 
-  const participantCandidates = useMemo(
-    () => profiles
-      .filter((profile) =>
-        profile.approval_status === 'approved' &&
-        profile.is_active &&
-        profile.app_role !== 'super_admin' &&
-        !HIDDEN_PROFILE_EMAILS.includes((profile.email ?? '') as (typeof HIDDEN_PROFILE_EMAILS)[number])
-      )
-      .sort((a, b) => a.full_name.localeCompare(b.full_name, 'ko-KR')),
-    [profiles]
-  );
+  const monthStart = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
+  const monthEnd = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0);
+  const calendarDays = useMemo(() => buildCalendarDays(monthCursor), [monthCursor]);
+  const occurrences = useMemo(() => expandOccurrences(events, monthStart, monthEnd), [events, monthStart, monthEnd]);
+  const occurrencesByDate = useMemo(() => {
+    const grouped = new Map<string, CalendarOccurrence[]>();
+    occurrences.forEach((occurrence) => {
+      grouped.set(occurrence.date, [...(grouped.get(occurrence.date) ?? []), occurrence]);
+    });
+    grouped.forEach((items) => items.sort((a, b) => a.startAt.getTime() - b.startAt.getTime()));
+    return grouped;
+  }, [occurrences]);
+  const selectedOccurrences = occurrencesByDate.get(selectedDate) ?? [];
 
-  const filteredParticipants = useMemo(() => {
-    const keyword = participantSearch.trim().toLowerCase();
-    if (!keyword) return participantCandidates;
-    return participantCandidates.filter((profile) =>
-      profile.full_name.toLowerCase().includes(keyword) ||
-      (profile.username ?? '').toLowerCase().includes(keyword)
-    );
-  }, [participantCandidates, participantSearch]);
-
-  const plannedEvents = events.filter((event) => event.status === 'PLANNED');
-  const closedEvents = events.filter((event) => event.status !== 'PLANNED');
-
-  const updateForm = (patch: Partial<EventForm>) => {
+  const updateForm = (patch: Partial<ScheduleForm>) => {
     setForm((current) => ({ ...current, ...patch }));
   };
 
-  const toggleParticipant = (memberId: string) => {
-    setForm((current) => ({
-      ...current,
-      participantMemberIds: current.participantMemberIds.includes(memberId)
-        ? current.participantMemberIds.filter((id) => id !== memberId)
-        : [...current.participantMemberIds, memberId],
-    }));
+  const moveMonth = (delta: number) => {
+    setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
   };
 
-  const selectAllFiltered = () => {
-    setForm((current) => ({
-      ...current,
-      participantMemberIds: Array.from(new Set([
-        ...current.participantMemberIds,
-        ...filteredParticipants.map((profile) => profile.id),
-      ])),
-    }));
-  };
-
-  const clearParticipants = () => {
-    setForm((current) => ({ ...current, participantMemberIds: [] }));
+  const selectDate = (date: string) => {
+    setSelectedDate(date);
+    if (!form.id) {
+      updateForm({ date });
+    }
   };
 
   const editEvent = (event: ClubEvent) => {
+    const startAt = new Date(event.start_at);
+    const endAt = new Date(event.end_at);
     setForm({
       id: event.id,
       title: event.title,
       type: event.type,
-      eventDate: event.event_date,
+      date: toDateInput(startAt),
+      startTime: toTimeInput(startAt),
+      endTime: toTimeInput(endAt),
+      recurrenceType: event.recurrence_type,
+      recurrenceUntil: event.recurrence_until ?? '',
       location: event.location ?? '',
       memo: event.memo ?? '',
-      participantMemberIds: event.participants.map((participant) => participant.member_id),
     });
+    setSelectedDate(toDateInput(startAt));
   };
 
   const submit = () => {
     const title = form.title.trim();
-    if (!title || !form.eventDate) {
+    const startAt = `${form.date}T${form.startTime}:00`;
+    const endAt = `${form.date}T${form.endTime}:00`;
+
+    if (!title || !form.date || !form.startTime || !form.endTime) {
       setToastTone('error');
-      setMessage('이벤트명과 일자를 입력해 주세요.');
+      setMessage('일정명, 날짜, 시작/종료 시간을 입력해 주세요.');
       return;
     }
 
-    setMessage('');
+    if (new Date(startAt).getTime() >= new Date(endAt).getTime()) {
+      setToastTone('error');
+      setMessage('종료 시간은 시작 시간보다 늦어야 합니다.');
+      return;
+    }
+
     startTransition(async () => {
       const payload = {
         title,
         type: form.type,
-        eventDate: form.eventDate,
+        startAt,
+        endAt,
+        recurrenceType: form.recurrenceType,
+        recurrenceUntil: form.recurrenceType === 'NONE' ? null : form.recurrenceUntil || null,
         location: form.location.trim() || null,
         memo: form.memo.trim() || null,
-        participantMemberIds: form.participantMemberIds,
       };
       const result = form.id
         ? await updateClubEventAction(form.id, payload)
         : await createClubEventAction(payload);
 
-      if (!result.ok) {
-        setToastTone('error');
-        setMessage(result.message ?? '이벤트 저장에 실패했습니다.');
-        return;
-      }
-
-      setToastTone('success');
-      setMessage(result.message ?? '이벤트가 저장되었습니다.');
-      setForm(emptyForm);
-    });
-  };
-
-  const changeStatus = (eventId: string, status: ClubEventStatus) => {
-    startTransition(async () => {
-      const result = await updateClubEventStatusAction(eventId, status);
       setToastTone(result.ok ? 'success' : 'error');
-      setMessage(result.message ?? (result.ok ? '이벤트 상태가 변경되었습니다.' : '이벤트 상태 변경에 실패했습니다.'));
+      setMessage(result.message ?? (result.ok ? '일정이 저장되었습니다.' : '일정 저장에 실패했습니다.'));
+      if (result.ok) {
+        setForm({ ...emptyForm, date: form.date });
+      }
     });
   };
 
@@ -180,61 +158,7 @@ export function EventManagement({
     startTransition(async () => {
       const result = await deleteClubEventAction(eventId);
       setToastTone(result.ok ? 'success' : 'error');
-      setMessage(result.message ?? (result.ok ? '이벤트가 삭제되었습니다.' : '이벤트 삭제에 실패했습니다.'));
-    });
-  };
-
-  const updateChargeForm = (eventId: string, patch: Partial<{ fiscalYearId: string; amount: string }>) => {
-    setChargeForms((current) => ({
-      ...current,
-      [eventId]: {
-        fiscalYearId: current[eventId]?.fiscalYearId ?? selectedFiscalYearId ?? fiscalYears[0]?.id ?? '',
-        amount: current[eventId]?.amount ?? '',
-        ...patch,
-      },
-    }));
-  };
-
-  const changeAttendance = (eventId: string, memberId: string, attendanceStatus: EventAttendanceStatus) => {
-    startTransition(async () => {
-      const result = await updateEventParticipantAttendanceAction(eventId, memberId, attendanceStatus);
-      setToastTone(result.ok ? 'success' : 'error');
-      setMessage(result.message ?? (result.ok ? '출석 상태가 변경되었습니다.' : '출석 상태 변경에 실패했습니다.'));
-    });
-  };
-
-  const createChargeFromEvent = (event: ClubEvent) => {
-    const chargeForm = chargeForms[event.id] ?? {
-      fiscalYearId: selectedFiscalYearId ?? fiscalYears[0]?.id ?? '',
-      amount: '',
-    };
-    const amount = Number(chargeForm.amount.replace(/\D/g, ''));
-    const presentParticipants = event.participants.filter((participant) => participant.attendance_status === 'PRESENT');
-
-    if (!chargeForm.fiscalYearId || amount <= 0 || presentParticipants.length === 0) {
-      setToastTone('error');
-      setMessage('기준 연도, 1인당 금액, 참석자를 확인해 주세요.');
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await createAdditionalChargeGroupAction({
-        fiscalYearId: chargeForm.fiscalYearId,
-        clubEventId: event.id,
-        title: event.title,
-        category: event.type === 'DINNER' ? 'DINNER_FEE' : event.type === 'TOURNAMENT' ? 'TOURNAMENT_FEE' : 'ETC_FEE',
-        eventDate: event.event_date,
-        supportAmount: 0,
-        actualCost: amount * presentParticipants.length,
-        memo: event.memo,
-        participantMemberIds: presentParticipants.map((participant) => participant.member_id),
-        amountPerParticipant: amount,
-      });
-      setToastTone(result.ok ? 'success' : 'error');
-      setMessage(result.message ?? (result.ok ? '이벤트 추가비용이 생성되었습니다.' : '이벤트 추가비용 생성에 실패했습니다.'));
-      if (result.ok) {
-        updateChargeForm(event.id, { amount: '' });
-      }
+      setMessage(result.message ?? (result.ok ? '일정이 삭제되었습니다.' : '일정 삭제에 실패했습니다.'));
     });
   };
 
@@ -243,262 +167,217 @@ export function EventManagement({
       <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
       <div className="space-y-8">
         <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Events</p>
-              <h2 className="mt-2 text-3xl font-black text-slate-900">대회 / 이벤트 관리</h2>
-              <p className="mt-2 text-sm text-slate-500">대회, 훈련, 회식, 회의 일정을 만들고 참가자를 관리합니다.</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Calendar</p>
+              <h2 className="mt-2 text-3xl font-black text-slate-900">일정 캘린더</h2>
+              <p className="mt-2 text-sm text-slate-500">월간 캘린더에서 일정을 확인하고 반복 일정을 등록합니다.</p>
             </div>
-            <span className="rounded-full bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
-              예정 {plannedEvents.length}건 / 종료 {closedEvents.length}건
-            </span>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => moveMonth(-1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">이전</button>
+              <span className="min-w-32 text-center text-lg font-black text-slate-900">{monthCursor.getFullYear()}년 {monthCursor.getMonth() + 1}월</span>
+              <button type="button" onClick={() => moveMonth(1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">다음</button>
+            </div>
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1 text-xs font-black text-slate-500">
-                  이벤트명
-                  <input
-                    value={form.title}
-                    onChange={(event) => updateForm({ title: event.target.value })}
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-brand-500"
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-black text-slate-500">
-                  유형
-                  <select
-                    value={form.type}
-                    onChange={(event) => updateForm({ type: event.target.value as ClubEventType })}
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-brand-500"
-                  >
-                    {Object.entries(TYPE_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-xs font-black text-slate-500">
-                  일자
-                  <input
-                    type="date"
-                    value={form.eventDate}
-                    onChange={(event) => updateForm({ eventDate: event.target.value })}
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-brand-500"
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-black text-slate-500">
-                  장소
-                  <input
-                    value={form.location}
-                    onChange={(event) => updateForm({ location: event.target.value })}
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-brand-500"
-                  />
-                </label>
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+              <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-black text-slate-500">
+                {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
+                  <div key={day} className="px-2 py-3">{day}</div>
+                ))}
               </div>
-              <label className="grid gap-1 text-xs font-black text-slate-500">
-                메모
-                <textarea
-                  value={form.memo}
-                  onChange={(event) => updateForm({ memo: event.target.value })}
-                  rows={3}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-brand-500"
-                />
-              </label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={submit}
-                  className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-brand-700 px-4 text-sm font-black text-white transition hover:bg-brand-800 disabled:opacity-50"
-                >
-                  {form.id ? '이벤트 수정' : '이벤트 생성'}
-                </button>
-                {form.id ? (
-                  <button
-                    type="button"
-                    onClick={() => setForm(emptyForm)}
-                    className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-100"
-                  >
-                    취소
-                  </button>
-                ) : null}
+              <div className="grid grid-cols-7">
+                {calendarDays.map((day) => {
+                  const date = toDateInput(day);
+                  const dayOccurrences = occurrencesByDate.get(date) ?? [];
+                  const inMonth = day.getMonth() === monthCursor.getMonth();
+                  const selected = selectedDate === date;
+                  return (
+                    <button
+                      type="button"
+                      key={date}
+                      onClick={() => selectDate(date)}
+                      className={`min-h-28 border-t border-slate-100 p-2 text-left transition ${selected ? 'bg-brand-50' : inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}`}
+                    >
+                      <span className={`text-sm font-black ${selected ? 'text-brand-800' : 'text-slate-800'}`}>{day.getDate()}</span>
+                      <div className="mt-2 space-y-1">
+                        {dayOccurrences.slice(0, 3).map((occurrence) => (
+                          <div key={`${occurrence.event.id}-${occurrence.date}-${occurrence.startAt.toISOString()}`} className="truncate rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-bold text-white">
+                            {toTimeInput(occurrence.startAt)} {occurrence.event.title}
+                          </div>
+                        ))}
+                        {dayOccurrences.length > 3 ? <div className="text-[11px] font-bold text-slate-500">+{dayOccurrences.length - 3}개</div> : null}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <label className="grid flex-1 gap-1 text-xs font-black text-slate-500">
-                  참가자 검색
-                  <input
-                    value={participantSearch}
-                    onChange={(event) => setParticipantSearch(event.target.value)}
-                    placeholder="이름 또는 아이디"
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-brand-500"
-                  />
-                </label>
-                <div className="flex gap-2">
-                  <button type="button" onClick={selectAllFiltered} className="h-11 rounded-xl bg-slate-900 px-3 text-xs font-black text-white">전체 선택</button>
-                  <button type="button" onClick={clearParticipants} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black text-slate-700">초기화</button>
+            <div className="space-y-4">
+              <ScheduleFormPanel form={form} isPending={isPending} onChange={updateForm} onSubmit={submit} onCancel={() => setForm({ ...emptyForm, date: selectedDate })} />
+              <section className="rounded-3xl border border-slate-200 bg-white p-4">
+                <h3 className="text-lg font-black text-slate-900">{selectedDate} 일정</h3>
+                <div className="mt-3 space-y-2">
+                  {selectedOccurrences.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm font-semibold text-slate-500">등록된 일정이 없습니다.</div>
+                  ) : selectedOccurrences.map((occurrence) => (
+                    <article key={`${occurrence.event.id}-${occurrence.startAt.toISOString()}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-black text-slate-900">{occurrence.event.title}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-500">{TYPE_LABELS[occurrence.event.type]} · {toTimeInput(occurrence.startAt)}-{toTimeInput(occurrence.endAt)}</p>
+                          {occurrence.event.recurrence_type !== 'NONE' ? <p className="mt-1 text-xs font-bold text-brand-700">{RECURRENCE_LABELS[occurrence.event.recurrence_type]}</p> : null}
+                          {occurrence.event.location ? <p className="mt-1 text-xs text-slate-500">{occurrence.event.location}</p> : null}
+                        </div>
+                        <div className="flex gap-1">
+                          <button type="button" onClick={() => editEvent(occurrence.event)} className="rounded-lg bg-white px-2 py-1 text-xs font-black text-slate-700">수정</button>
+                          <button type="button" onClick={() => removeEvent(occurrence.event.id)} className="rounded-lg bg-slate-900 px-2 py-1 text-xs font-black text-white">삭제</button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
-              </div>
-              <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
-                {filteredParticipants.map((profile) => (
-                  <label key={profile.id} className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
-                    <span>
-                      <span className="font-black text-slate-800">{profile.full_name}</span>
-                      <span className="ml-2 text-xs font-semibold text-slate-500">{profile.username}</span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={form.participantMemberIds.includes(profile.id)}
-                      onChange={() => toggleParticipant(profile.id)}
-                      className="h-4 w-4 accent-brand-700"
-                    />
-                  </label>
-                ))}
-              </div>
+              </section>
             </div>
           </div>
         </section>
-
-        <EventList
-          title="예정 이벤트"
-          events={plannedEvents}
-          fiscalYears={fiscalYears}
-          selectedFiscalYearId={selectedFiscalYearId}
-          chargeForms={chargeForms}
-          onChargeFormChange={updateChargeForm}
-          onCreateCharge={createChargeFromEvent}
-          onAttendance={changeAttendance}
-          onEdit={editEvent}
-          onStatus={changeStatus}
-          onDelete={removeEvent}
-        />
-        <EventList
-          title="종료 / 취소 이벤트"
-          events={closedEvents}
-          fiscalYears={fiscalYears}
-          selectedFiscalYearId={selectedFiscalYearId}
-          chargeForms={chargeForms}
-          onChargeFormChange={updateChargeForm}
-          onCreateCharge={createChargeFromEvent}
-          onAttendance={changeAttendance}
-          onEdit={editEvent}
-          onStatus={changeStatus}
-          onDelete={removeEvent}
-        />
       </div>
     </>
   );
 }
 
-function EventList({
-  title,
-  events,
-  fiscalYears,
-  selectedFiscalYearId,
-  chargeForms,
-  onChargeFormChange,
-  onCreateCharge,
-  onAttendance,
-  onEdit,
-  onStatus,
-  onDelete,
+function ScheduleFormPanel({
+  form,
+  isPending,
+  onChange,
+  onSubmit,
+  onCancel,
 }: {
-  title: string;
-  events: ClubEvent[];
-  fiscalYears: FiscalYear[];
-  selectedFiscalYearId: string | null;
-  chargeForms: Record<string, { fiscalYearId: string; amount: string }>;
-  onChargeFormChange: (eventId: string, patch: Partial<{ fiscalYearId: string; amount: string }>) => void;
-  onCreateCharge: (event: ClubEvent) => void;
-  onAttendance: (eventId: string, memberId: string, attendanceStatus: EventAttendanceStatus) => void;
-  onEdit: (event: ClubEvent) => void;
-  onStatus: (eventId: string, status: ClubEventStatus) => void;
-  onDelete: (eventId: string) => void;
+  form: ScheduleForm;
+  isPending: boolean;
+  onChange: (patch: Partial<ScheduleForm>) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
 }) {
   return (
-    <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
-      <h3 className="text-xl font-black text-slate-900">{title}</h3>
-      <div className="mt-4 space-y-3">
-        {events.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm font-semibold text-slate-500">등록된 이벤트가 없습니다.</div>
-        ) : events.map((event) => {
-          const presentCount = event.participants.filter((participant) => participant.attendance_status === 'PRESENT').length;
-          const chargeForm = chargeForms[event.id] ?? {
-            fiscalYearId: selectedFiscalYearId ?? fiscalYears[0]?.id ?? '',
-            amount: '',
-          };
-
-          return (
-          <article key={event.id} className="rounded-3xl border border-slate-200 bg-white p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <div className="flex flex-wrap gap-2 text-xs font-black text-slate-500">
-                  <span className="rounded-full bg-brand-50 px-3 py-1 text-brand-800">{TYPE_LABELS[event.type]}</span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1">{STATUS_LABELS[event.status]}</span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1">{event.event_date}</span>
-                </div>
-                <h4 className="mt-3 text-lg font-black text-slate-900">{event.title}</h4>
-                <p className="mt-1 text-sm text-slate-500">{event.location || '장소 미정'} · 참가 {event.participants.length}명 · 참석 {presentCount}명</p>
-                {event.memo ? <p className="mt-2 text-sm leading-6 text-slate-600">{event.memo}</p> : null}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => onEdit(event)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">수정</button>
-                <button type="button" onClick={() => onStatus(event.id, 'PLANNED')} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">예정</button>
-                <button type="button" onClick={() => onStatus(event.id, 'COMPLETED')} className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-black text-emerald-700">완료</button>
-                <button type="button" onClick={() => onStatus(event.id, 'CANCELLED')} className="rounded-xl bg-rose-100 px-3 py-2 text-xs font-black text-rose-700">취소</button>
-                <button type="button" onClick={() => onDelete(event.id)} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-black text-white">삭제</button>
-              </div>
-            </div>
-            {event.participants.length > 0 ? (
-              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {event.participants.map((participant) => (
-                  <div key={participant.member_id} className="flex items-center justify-between gap-2 rounded-2xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
-                    <span className="min-w-0 truncate">{participant.member_name}</span>
-                    <select
-                      value={participant.attendance_status}
-                      onChange={(changeEvent) => onAttendance(event.id, participant.member_id, changeEvent.target.value as EventAttendanceStatus)}
-                      className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-black text-slate-700"
-                    >
-                      {Object.entries(ATTENDANCE_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {event.participants.length > 0 ? (
-              <div className="mt-4 grid gap-2 rounded-2xl border border-brand-100 bg-brand-50 p-3 sm:grid-cols-[1fr_1fr_auto]">
-                <select
-                  value={chargeForm.fiscalYearId}
-                  onChange={(changeEvent) => onChargeFormChange(event.id, { fiscalYearId: changeEvent.target.value })}
-                  className="h-11 rounded-xl border border-white bg-white px-3 text-sm font-bold text-slate-700"
-                >
-                  {fiscalYears.map((year) => (
-                    <option key={year.id} value={year.id}>{year.year}년</option>
-                  ))}
-                </select>
-                <input
-                  value={chargeForm.amount}
-                  onChange={(changeEvent) => onChargeFormChange(event.id, { amount: changeEvent.target.value.replace(/\D/g, '') })}
-                  placeholder="참석자 1인당 금액"
-                  className="h-11 rounded-xl border border-white bg-white px-3 text-sm font-bold text-slate-700"
-                />
-                <button
-                  type="button"
-                  onClick={() => onCreateCharge(event)}
-                  className="h-11 rounded-xl bg-brand-700 px-4 text-sm font-black text-white transition hover:bg-brand-800"
-                >
-                  추가비용 생성
-                </button>
-              </div>
-            ) : null}
-          </article>
-        );
-        })}
+    <section className="rounded-3xl border border-slate-200 bg-white p-4">
+      <h3 className="text-lg font-black text-slate-900">{form.id ? '일정 수정' : '일정 추가'}</h3>
+      <div className="mt-3 grid gap-3">
+        <label className="grid gap-1 text-xs font-black text-slate-500">
+          일정명
+          <input value={form.title} onChange={(event) => onChange({ title: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs font-black text-slate-500">
+            유형
+            <select value={form.type} onChange={(event) => onChange({ type: event.target.value as ClubEventType })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500">
+              {Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-black text-slate-500">
+            날짜
+            <input type="date" value={form.date} onChange={(event) => onChange({ date: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
+          </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs font-black text-slate-500">
+            시작 시간
+            <input type="time" value={form.startTime} onChange={(event) => onChange({ startTime: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
+          </label>
+          <label className="grid gap-1 text-xs font-black text-slate-500">
+            종료 시간
+            <input type="time" value={form.endTime} onChange={(event) => onChange({ endTime: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
+          </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs font-black text-slate-500">
+            반복
+            <select value={form.recurrenceType} onChange={(event) => onChange({ recurrenceType: event.target.value as ScheduleRecurrenceType })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500">
+              {Object.entries(RECURRENCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-black text-slate-500">
+            반복 종료일
+            <input type="date" value={form.recurrenceUntil} disabled={form.recurrenceType === 'NONE'} onChange={(event) => onChange({ recurrenceUntil: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500 disabled:bg-slate-100" />
+          </label>
+        </div>
+        <label className="grid gap-1 text-xs font-black text-slate-500">
+          장소
+          <input value={form.location} onChange={(event) => onChange({ location: event.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-brand-500" />
+        </label>
+        <label className="grid gap-1 text-xs font-black text-slate-500">
+          메모
+          <textarea value={form.memo} onChange={(event) => onChange({ memo: event.target.value })} rows={3} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold outline-none focus:border-brand-500" />
+        </label>
+        <div className="flex gap-2">
+          <button type="button" disabled={isPending} onClick={onSubmit} className="h-11 flex-1 rounded-xl bg-brand-700 px-4 text-sm font-black text-white transition hover:bg-brand-800 disabled:opacity-50">{form.id ? '수정' : '추가'}</button>
+          {form.id ? <button type="button" onClick={onCancel} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">취소</button> : null}
+        </div>
       </div>
     </section>
   );
+}
+
+function buildCalendarDays(cursor: Date) {
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
+function expandOccurrences(events: ClubEvent[], monthStart: Date, monthEnd: Date) {
+  const occurrences: CalendarOccurrence[] = [];
+  events.forEach((event) => {
+    const baseStart = new Date(event.start_at);
+    const baseEnd = new Date(event.end_at);
+    const duration = baseEnd.getTime() - baseStart.getTime();
+    const recurrenceEnd = event.recurrence_until ? endOfDay(new Date(`${event.recurrence_until}T00:00:00`)) : monthEnd;
+    let cursor = new Date(baseStart);
+
+    while (cursor <= monthEnd && cursor <= recurrenceEnd) {
+      const occurrenceEnd = new Date(cursor.getTime() + duration);
+      if (occurrenceEnd >= monthStart && cursor <= monthEnd) {
+        occurrences.push({
+          event,
+          date: toDateInput(cursor),
+          startAt: new Date(cursor),
+          endAt: occurrenceEnd,
+        });
+      }
+      if (event.recurrence_type === 'NONE') break;
+      cursor = nextOccurrence(cursor, event.recurrence_type);
+    }
+  });
+  return occurrences;
+}
+
+function nextOccurrence(date: Date, recurrenceType: ScheduleRecurrenceType) {
+  const next = new Date(date);
+  if (recurrenceType === 'DAILY') next.setDate(next.getDate() + 1);
+  if (recurrenceType === 'WEEKLY') next.setDate(next.getDate() + 7);
+  if (recurrenceType === 'MONTHLY') next.setMonth(next.getMonth() + 1);
+  return next;
+}
+
+function endOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
+
+function toDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function toTimeInput(date: Date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }

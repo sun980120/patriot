@@ -36,10 +36,15 @@ public class ClubEventService {
 
     @Transactional
     public ClubEventResponse create(ClubEventRequest request) {
+        validateSchedule(request);
         ClubEvent event = clubEventRepository.save(ClubEvent.builder()
             .title(request.title().trim())
             .type(request.type())
             .eventDate(request.eventDate())
+            .startAt(request.startAt())
+            .endAt(request.endAt())
+            .recurrenceType(request.recurrenceType())
+            .recurrenceUntil(request.recurrenceUntil())
             .location(request.location())
             .memo(request.memo())
             .build());
@@ -50,11 +55,15 @@ public class ClubEventService {
 
     @Transactional
     public ClubEventResponse update(UUID eventId, ClubEventRequest request) {
+        validateSchedule(request);
         ClubEvent event = getEvent(eventId);
         event.update(
             request.title().trim(),
             request.type(),
-            request.eventDate(),
+            request.startAt(),
+            request.endAt(),
+            request.recurrenceType(),
+            request.recurrenceUntil(),
             request.location(),
             request.memo()
         );
@@ -89,6 +98,25 @@ public class ClubEventService {
             .orElseThrow(() -> new IllegalArgumentException("이벤트를 찾을 수 없습니다."));
     }
 
+    private void validateSchedule(ClubEventRequest request) {
+        if (!request.endAt().isAfter(request.startAt())) {
+            throw new IllegalArgumentException("종료 일시는 시작 일시보다 늦어야 합니다.");
+        }
+        if (
+            request.recurrenceType() != null &&
+            request.recurrenceType().name().equals("NONE") &&
+            request.recurrenceUntil() != null
+        ) {
+            throw new IllegalArgumentException("반복 없음 일정에는 반복 종료일을 지정할 수 없습니다.");
+        }
+        if (
+            request.recurrenceUntil() != null &&
+            request.recurrenceUntil().isBefore(request.startAt().toLocalDate())
+        ) {
+            throw new IllegalArgumentException("반복 종료일은 시작일보다 빠를 수 없습니다.");
+        }
+    }
+
     private void replaceParticipants(ClubEvent event, List<UUID> participantMemberIds) {
         eventParticipantRepository.deleteByEventId(event.getId());
         if (participantMemberIds == null || participantMemberIds.isEmpty()) {
@@ -119,6 +147,10 @@ public class ClubEventService {
             event.getType(),
             event.getStatus(),
             event.getEventDate(),
+            event.getStartAt(),
+            event.getEndAt(),
+            event.getRecurrenceType(),
+            event.getRecurrenceUntil(),
             event.getLocation(),
             event.getMemo(),
             event.getCreatedAt(),
