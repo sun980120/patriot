@@ -72,10 +72,10 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
 
-  const monthStart = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
-  const monthEnd = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0);
   const calendarDays = useMemo(() => buildCalendarDays(monthCursor), [monthCursor]);
-  const occurrences = useMemo(() => expandOccurrences(events, monthStart, monthEnd), [events, monthStart, monthEnd]);
+  const calendarStart = calendarDays[0] ?? new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
+  const calendarEnd = calendarDays[calendarDays.length - 1] ?? new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0);
+  const occurrences = useMemo(() => expandOccurrences(events, calendarStart, calendarEnd), [events, calendarStart, calendarEnd]);
   const occurrencesByDate = useMemo(() => {
     const grouped = new Map<string, CalendarOccurrence[]>();
     occurrences.forEach((occurrence) => {
