@@ -1,6 +1,7 @@
 package com.patriot.finance.controller;
 
 import com.patriot.finance.dto.ClubEventRequest;
+import com.patriot.finance.dto.ClubEventDeleteRequest;
 import com.patriot.finance.dto.ClubEventResponse;
 import com.patriot.finance.dto.ClubEventStatusRequest;
 import com.patriot.finance.dto.EventAttendanceRequest;
@@ -35,26 +36,26 @@ public class ClubEventController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN') or hasAuthority('GRADE_간사')")
     @ResponseStatus(HttpStatus.CREATED)
     public ClubEventResponse create(@Valid @RequestBody ClubEventRequest request) {
         return clubEventService.create(request);
     }
 
     @PutMapping("/{eventId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN') or hasAuthority('GRADE_간사')")
     public ClubEventResponse update(@PathVariable UUID eventId, @Valid @RequestBody ClubEventRequest request) {
         return clubEventService.update(eventId, request);
     }
 
     @PatchMapping("/{eventId}/status")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN') or hasAuthority('GRADE_간사')")
     public ClubEventResponse updateStatus(@PathVariable UUID eventId, @Valid @RequestBody ClubEventStatusRequest request) {
         return clubEventService.updateStatus(eventId, request.status());
     }
 
     @PatchMapping("/{eventId}/participants/{memberId}/attendance")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN') or hasAuthority('GRADE_간사')")
     public ClubEventResponse updateAttendance(
         @PathVariable UUID eventId,
         @PathVariable UUID memberId,
@@ -64,9 +65,12 @@ public class ClubEventController {
     }
 
     @DeleteMapping("/{eventId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN') or hasAuthority('GRADE_간사')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID eventId) {
-        clubEventService.delete(eventId);
+    public void delete(
+        @PathVariable UUID eventId,
+        @RequestBody(required = false) ClubEventDeleteRequest request
+    ) {
+        clubEventService.delete(eventId, request);
     }
 }

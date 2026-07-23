@@ -23,6 +23,7 @@ public record ClubEventResponse(
     LocalDateTime endAt,
     ScheduleRecurrenceType recurrenceType,
     LocalDate recurrenceUntil,
+    List<LocalDate> recurrenceExclusionDates,
     String location,
     String memo,
     LocalDateTime createdAt,

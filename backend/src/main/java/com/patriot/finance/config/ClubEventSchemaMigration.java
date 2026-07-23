@@ -40,6 +40,7 @@ public class ClubEventSchemaMigration implements CommandLineRunner {
         jdbcTemplate.execute("alter table club_events add column if not exists end_time time");
         jdbcTemplate.execute("alter table club_events add column if not exists recurrence_type varchar(32)");
         jdbcTemplate.execute("alter table club_events add column if not exists recurrence_until date");
+        jdbcTemplate.execute("alter table club_events add column if not exists recurrence_exclusion_dates varchar(2000)");
         jdbcTemplate.execute("alter table club_events add column if not exists start_at timestamp");
         jdbcTemplate.execute("alter table club_events add column if not exists end_at timestamp");
 

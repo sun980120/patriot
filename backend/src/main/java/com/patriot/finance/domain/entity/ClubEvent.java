@@ -11,6 +11,9 @@ import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.TreeSet;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -54,6 +57,9 @@ public class ClubEvent extends BaseEntity {
 
     private LocalDate recurrenceUntil;
 
+    @Column(length = 2000)
+    private String recurrenceExclusionDates;
+
     private String location;
 
     private String memo;
@@ -72,6 +78,7 @@ public class ClubEvent extends BaseEntity {
         LocalDateTime endAt,
         ScheduleRecurrenceType recurrenceType,
         LocalDate recurrenceUntil,
+        String recurrenceExclusionDates,
         String location,
         String memo
     ) {
@@ -87,6 +94,7 @@ public class ClubEvent extends BaseEntity {
         this.eventDate = eventDate == null ? this.startDate : eventDate;
         this.recurrenceType = recurrenceType == null ? ScheduleRecurrenceType.NONE : recurrenceType;
         this.recurrenceUntil = recurrenceUntil;
+        this.recurrenceExclusionDates = normalize(recurrenceExclusionDates);
         this.location = normalize(location);
         this.memo = normalize(memo);
     }
@@ -114,12 +122,42 @@ public class ClubEvent extends BaseEntity {
         this.eventDate = startDate;
         this.recurrenceType = recurrenceType == null ? ScheduleRecurrenceType.NONE : recurrenceType;
         this.recurrenceUntil = recurrenceUntil;
+        this.recurrenceExclusionDates = null;
         this.location = normalize(location);
         this.memo = normalize(memo);
     }
 
     public void updateStatus(ClubEventStatus status) {
         this.status = status;
+    }
+
+    public void excludeRecurrence(LocalDate occurrenceStartDate) {
+        TreeSet<String> exclusions = new TreeSet<>(getRecurrenceExclusionDateValues());
+        exclusions.add(occurrenceStartDate.toString());
+        this.recurrenceExclusionDates = exclusions.isEmpty() ? null : String.join(",", exclusions);
+    }
+
+    public void endRecurrenceBefore(LocalDate occurrenceStartDate) {
+        this.recurrenceUntil = occurrenceStartDate.minusDays(1);
+    }
+
+    public List<LocalDate> getRecurrenceExclusionDates() {
+        return getRecurrenceExclusionDateValues().stream()
+            .map(LocalDate::parse)
+            .toList();
+    }
+
+    private List<String> getRecurrenceExclusionDateValues() {
+        if (recurrenceExclusionDates == null || recurrenceExclusionDates.isBlank()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        for (String value : recurrenceExclusionDates.split(",")) {
+            if (!value.isBlank()) {
+                values.add(value.trim());
+            }
+        }
+        return values;
     }
 
     private String normalize(String value) {

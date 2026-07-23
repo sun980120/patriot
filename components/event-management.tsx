@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   createClubEventAction,
   deleteClubEventAction,
   updateClubEventAction,
 } from '@/app/actions';
-import type { ClubEvent, ClubEventType, ScheduleRecurrenceType } from '@/lib/types';
+import type { ClubEvent, ClubEventDeleteMode, ClubEventType, ScheduleRecurrenceType } from '@/lib/types';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 
 const TYPE_LABELS: Record<ClubEventType, string> = {
@@ -64,6 +65,7 @@ const emptyForm: ScheduleForm = {
 };
 
 export function EventManagement({ events, canManage }: { events: ClubEvent[]; canManage: boolean }) {
+  const router = useRouter();
   const [monthCursor, setMonthCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [form, setForm] = useState<ScheduleForm>(emptyForm);
   const [selectedDate, setSelectedDate] = useState(toDateInput(today));
@@ -181,16 +183,21 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
       setMessage(result.message ?? (result.ok ? '일정이 저장되었습니다.' : '일정 저장에 실패했습니다.'));
       if (result.ok) {
         setForm({ ...emptyForm, startDate: form.startDate, endDate: form.startDate });
+        router.refresh();
       }
     });
   };
 
-  const removeEvent = (eventId: string) => {
+  const removeEvent = (eventId: string, mode: ClubEventDeleteMode = 'ALL', occurrenceStartDate?: string) => {
     if (!canManage) return;
     startTransition(async () => {
-      const result = await deleteClubEventAction(eventId);
+      const result = await deleteClubEventAction(eventId, { mode, occurrenceStartDate: occurrenceStartDate ?? null });
       setToastTone(result.ok ? 'success' : 'error');
       setMessage(result.message ?? (result.ok ? '일정이 삭제되었습니다.' : '일정 삭제에 실패했습니다.'));
+      if (result.ok) {
+        setSelectedOccurrenceKey(null);
+        router.refresh();
+      }
     });
   };
 
@@ -298,7 +305,7 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
                 occurrence={selectedOccurrence}
                 canManage={canManage}
                 onEdit={editEvent}
-                onDelete={removeEvent}
+                onDelete={(eventId, mode, occurrenceStartDate) => removeEvent(eventId, mode, occurrenceStartDate)}
               />
             </div>
           </div>
@@ -317,7 +324,7 @@ function ScheduleDetailPanel({
   occurrence: CalendarOccurrence | null;
   canManage: boolean;
   onEdit: (event: ClubEvent) => void;
-  onDelete: (eventId: string) => void;
+  onDelete: (eventId: string, mode: ClubEventDeleteMode, occurrenceStartDate?: string) => void;
 }) {
   if (!occurrence) {
     return (
@@ -334,10 +341,10 @@ function ScheduleDetailPanel({
           <p className="text-xs font-black text-brand-700">{TYPE_LABELS[occurrence.event.type]}</p>
           <h3 className="mt-1 text-xl font-black text-slate-900">{occurrence.event.title}</h3>
         </div>
-        {canManage ? (
+        {canManage && occurrence.event.recurrence_type === 'NONE' ? (
           <div className="flex gap-1">
             <button type="button" onClick={() => onEdit(occurrence.event)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">수정</button>
-            <button type="button" onClick={() => onDelete(occurrence.event.id)} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white">삭제</button>
+            <button type="button" onClick={() => onDelete(occurrence.event.id, 'ALL')} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white">삭제</button>
           </div>
         ) : null}
       </div>
@@ -373,6 +380,17 @@ function ScheduleDetailPanel({
           </div>
         ) : null}
       </dl>
+      {canManage && occurrence.event.recurrence_type !== 'NONE' ? (
+        <div className="mt-4 border-t border-slate-200 pt-4">
+          <p className="text-xs font-black text-slate-500">반복 일정 삭제</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <button type="button" onClick={() => onDelete(occurrence.event.id, 'ONLY_THIS', occurrence.startDate)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">해당 일정만</button>
+            <button type="button" onClick={() => onDelete(occurrence.event.id, 'THIS_AND_FOLLOWING', occurrence.startDate)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">이후 모두</button>
+            <button type="button" onClick={() => onDelete(occurrence.event.id, 'ALL')} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-black text-white">전체 삭제</button>
+          </div>
+          <button type="button" onClick={() => onEdit(occurrence.event)} className="mt-2 w-full rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">반복 일정 수정</button>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -474,11 +492,12 @@ function expandOccurrences(events: ClubEvent[], monthStart: Date, monthEnd: Date
     const baseEnd = event.end_date ?? baseStart;
     const rangeDays = daysBetween(baseStart, baseEnd);
     const recurrenceEnd = event.recurrence_until ?? visibleEnd;
+    const excludedStartDates = new Set(event.recurrence_exclusion_dates);
     let occurrenceStart = baseStart;
 
     while (occurrenceStart <= visibleEnd && occurrenceStart <= recurrenceEnd) {
       const occurrenceEnd = addDays(occurrenceStart, rangeDays);
-      if (occurrenceEnd >= visibleStart && occurrenceStart <= visibleEnd) {
+      if (!excludedStartDates.has(occurrenceStart) && occurrenceEnd >= visibleStart && occurrenceStart <= visibleEnd) {
         let date = maxDateString(occurrenceStart, visibleStart);
         const lastDate = minDateString(occurrenceEnd, visibleEnd);
         while (date <= lastDate) {

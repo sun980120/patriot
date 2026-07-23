@@ -4,8 +4,11 @@ import com.patriot.finance.domain.entity.ClubEvent;
 import com.patriot.finance.domain.entity.EventParticipant;
 import com.patriot.finance.domain.entity.Member;
 import com.patriot.finance.domain.enums.ApprovalStatus;
+import com.patriot.finance.domain.enums.ClubEventDeleteMode;
 import com.patriot.finance.domain.enums.ClubEventStatus;
 import com.patriot.finance.domain.enums.EventAttendanceStatus;
+import com.patriot.finance.domain.enums.ScheduleRecurrenceType;
+import com.patriot.finance.dto.ClubEventDeleteRequest;
 import com.patriot.finance.dto.ClubEventRequest;
 import com.patriot.finance.dto.ClubEventResponse;
 import com.patriot.finance.dto.EventParticipantResponse;
@@ -92,8 +95,18 @@ public class ClubEventService {
     }
 
     @Transactional
-    public void delete(UUID eventId) {
+    public void delete(UUID eventId, ClubEventDeleteRequest request) {
         ClubEvent event = getEvent(eventId);
+        ClubEventDeleteMode mode = request == null || request.mode() == null ? ClubEventDeleteMode.ALL : request.mode();
+        if (mode == ClubEventDeleteMode.ONLY_THIS) {
+            excludeSingleOccurrence(event, request.occurrenceStartDate());
+            return;
+        }
+        if (mode == ClubEventDeleteMode.THIS_AND_FOLLOWING) {
+            deleteThisAndFollowing(event, request.occurrenceStartDate());
+            return;
+        }
+
         eventParticipantRepository.deleteByEventId(event.getId());
         clubEventRepository.delete(event);
     }
@@ -101,6 +114,31 @@ public class ClubEventService {
     private ClubEvent getEvent(UUID eventId) {
         return clubEventRepository.findById(eventId)
             .orElseThrow(() -> new IllegalArgumentException("이벤트를 찾을 수 없습니다."));
+    }
+
+    private void excludeSingleOccurrence(ClubEvent event, LocalDate occurrenceStartDate) {
+        validateRecurringDelete(event, occurrenceStartDate);
+        event.excludeRecurrence(occurrenceStartDate);
+    }
+
+    private void deleteThisAndFollowing(ClubEvent event, LocalDate occurrenceStartDate) {
+        validateRecurringDelete(event, occurrenceStartDate);
+        LocalDate startDate = event.getStartDate() == null ? event.getEventDate() : event.getStartDate();
+        if (!occurrenceStartDate.isAfter(startDate)) {
+            eventParticipantRepository.deleteByEventId(event.getId());
+            clubEventRepository.delete(event);
+            return;
+        }
+        event.endRecurrenceBefore(occurrenceStartDate);
+    }
+
+    private void validateRecurringDelete(ClubEvent event, LocalDate occurrenceStartDate) {
+        if (event.getRecurrenceType() == ScheduleRecurrenceType.NONE) {
+            throw new IllegalArgumentException("반복 일정이 아니면 전체 삭제만 사용할 수 있습니다.");
+        }
+        if (occurrenceStartDate == null) {
+            throw new IllegalArgumentException("삭제할 반복 회차의 시작일이 필요합니다.");
+        }
     }
 
     private void validateSchedule(ClubEventRequest request) {
@@ -176,6 +214,7 @@ public class ClubEventService {
             event.getEndAt(),
             event.getRecurrenceType(),
             event.getRecurrenceUntil(),
+            event.getRecurrenceExclusionDates(),
             event.getLocation(),
             event.getMemo(),
             event.getCreatedAt(),

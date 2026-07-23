@@ -734,9 +734,16 @@ export async function updateEventParticipantAttendanceAction(
   return { ok: true, message: '참가자 출석 상태가 변경되었습니다.' };
 }
 
-export async function deleteClubEventAction(eventId: string): Promise<ActionResult> {
+export async function deleteClubEventAction(
+  eventId: string,
+  args?: {
+    mode?: 'ONLY_THIS' | 'THIS_AND_FOLLOWING' | 'ALL';
+    occurrenceStartDate?: string | null;
+  }
+): Promise<ActionResult> {
   const result = await serverApiFetch(`/api/events/${eventId}`, {
     method: 'DELETE',
+    body: args ? JSON.stringify(args) : undefined,
   });
 
   if (!result.ok) {

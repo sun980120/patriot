@@ -17,6 +17,7 @@ type ClubEventApiResponse = {
   endAt: string | null;
   recurrenceType: ClubEvent['recurrence_type'];
   recurrenceUntil: string | null;
+  recurrenceExclusionDates: string[] | null;
   location: string | null;
   memo: string | null;
   createdAt: string | null;
@@ -43,6 +44,7 @@ function toClubEvent(row: ClubEventApiResponse): ClubEvent {
     end_at: row.endAt,
     recurrence_type: row.recurrenceType,
     recurrence_until: row.recurrenceUntil,
+    recurrence_exclusion_dates: row.recurrenceExclusionDates ?? [],
     location: row.location,
     memo: row.memo,
     created_at: row.createdAt,

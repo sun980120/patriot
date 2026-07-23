@@ -8,6 +8,7 @@ export type ClubEventType = 'TOURNAMENT' | 'TRAINING' | 'DINNER' | 'MEETING' | '
 export type ClubEventStatus = 'PLANNED' | 'COMPLETED' | 'CANCELLED';
 export type EventAttendanceStatus = 'REGISTERED' | 'PRESENT' | 'ABSENT';
 export type ScheduleRecurrenceType = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+export type ClubEventDeleteMode = 'ONLY_THIS' | 'THIS_AND_FOLLOWING' | 'ALL';
 
 export type Profile = {
   id: string;
@@ -137,6 +138,7 @@ export type ClubEvent = {
   end_at: string | null;
   recurrence_type: ScheduleRecurrenceType;
   recurrence_until: string | null;
+  recurrence_exclusion_dates: string[];
   location: string | null;
   memo: string | null;
   created_at: string | null;
