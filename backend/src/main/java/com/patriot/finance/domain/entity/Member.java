@@ -223,7 +223,8 @@ public class Member extends BaseEntity {
         this.username = username;
     }
 
-    public void updateProfile(String username, String address, String addressDetail, LocalDate birthDate, MemberGrade memberGrade) {
+    public void updateProfile(String fullName, String username, String address, String addressDetail, LocalDate birthDate, MemberGrade memberGrade) {
+        this.fullName = fullName;
         this.username = username;
         this.email = username;
         this.address = address;
