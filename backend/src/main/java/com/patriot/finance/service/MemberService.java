@@ -173,6 +173,7 @@ public class MemberService {
             });
 
         member.updateProfile(
+            request.fullName() == null ? member.getFullName() : request.fullName().trim(),
             normalizedUsername,
             request.address().trim(),
             request.addressDetail() == null ? null : request.addressDetail().trim(),

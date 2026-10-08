@@ -108,6 +108,7 @@ export async function checkUsernameAvailabilityAction(username: string): Promise
 }
 
 export async function updateProfileAction(input: {
+  fullName: string;
   username: string;
   address: string;
   addressDetail: string;
@@ -123,6 +124,7 @@ export async function updateProfileAction(input: {
   }
 
   refreshHome();
+  revalidatePath('/account');
   return { ok: true, message: '사용자 정보가 변경되었습니다.' };
 }
 
