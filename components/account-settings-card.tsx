@@ -9,6 +9,7 @@ import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 export function AccountSettingsCard({ profile }: { profile: Profile }) {
   const openPostcodePopup = useDaumPostcodePopup();
   const [profileForm, setProfileForm] = useState({
+    fullName: profile.full_name,
     username: profile.username ?? '',
     address: profile.base_address ?? profile.address ?? '',
     birthDate: profile.birth_date ?? '',
@@ -39,14 +40,16 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
   const handleProfileSave = () => {
     setProfileMessage('');
 
-    if (!profileForm.username || !profileForm.address || !profileForm.birthDate) {
-      setProfileMessage('아이디, 주소, 생년월일을 모두 입력해 주세요.');
+    if (!profileForm.fullName.trim() || !profileForm.username || !profileForm.address || !profileForm.birthDate) {
+      setToastTone('error');
+      setProfileMessage('이름, 아이디, 주소, 생년월일을 모두 입력해 주세요.');
       return;
     }
 
     startTransition(async () => {
       const result = await updateProfileAction({
         ...profileForm,
+        fullName: profileForm.fullName.trim(),
         address: profileForm.address,
         addressDetail: detailAddress,
       });
@@ -122,10 +125,23 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
         <div className="border-b border-slate-200/80 pb-4">
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Account</p>
           <h2 className="mt-2 text-2xl font-black text-slate-900">사용자 정보 변경</h2>
-          <p className="mt-2 text-sm text-slate-500">아이디, 주소, 생년월일을 수정하고 아이디 중복 여부를 확인할 수 있습니다.</p>
         </div>
 
         <div className="mt-4 grid gap-3">
+          <div className="space-y-1">
+            <label htmlFor="profile-full-name" className="text-xs font-semibold text-slate-500">이름</label>
+            <input
+              id="profile-full-name"
+              value={profileForm.fullName}
+              onChange={(event) => setProfileForm((current) => ({ ...current, fullName: event.target.value }))}
+              type="text"
+              autoComplete="name"
+              maxLength={255}
+              required
+              disabled={pending}
+              className={baseInputClass}
+            />
+          </div>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
             <input
               value={profileForm.username}
