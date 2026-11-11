@@ -35,6 +35,7 @@ import java.security.spec.ECParameterSpec;
 import java.security.spec.ECPrivateKeySpec;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.Base64;
 import java.util.Comparator;
@@ -285,6 +286,10 @@ public class PushNotificationService {
     }
 
     private boolean isMonthlyDueUnpaid(FiscalYear fiscalYear, Member member, int month) {
+        if (member.getJoinedAt() != null && YearMonth.of(fiscalYear.getYear(), month)
+            .isBefore(YearMonth.from(member.getJoinedAt()))) {
+            return false;
+        }
         if (member.isExemptFor(fiscalYear.getYear(), month)) {
             return false;
         }

@@ -24,6 +24,15 @@ body {
   animation: calendar-month-enter 220ms ease-out;
 }
 
+.dues-dialog-enter { animation: dues-dialog-enter 180ms ease-out; }
+@keyframes dues-dialog-enter {
+  from { opacity: 0.8; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dues-dialog-enter { animation: none; }
+}
+
 .calendar-layout-grid {
   grid-template-columns: minmax(0, 1fr);
 }

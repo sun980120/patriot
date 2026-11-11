@@ -4,6 +4,8 @@ import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { publicApiFetch, serverApiFetch } from '@/lib/backend-api';
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from '@/lib/session';
+import { toPaymentRecord, type PaymentApiResponse } from '@/lib/payment-data';
+import type { PaymentRecord } from '@/lib/types';
 
 type ActionResult = {
   ok: boolean;
@@ -149,22 +151,32 @@ export async function createFiscalYearAction(year: number): Promise<ActionResult
   return { ok: true };
 }
 
-export async function togglePaymentAction(args: { fiscalYearId: string; memberId: string; month: number; paid: boolean }): Promise<ActionResult> {
-  const result = await serverApiFetch('/api/payments/toggle', {
+export async function togglePaymentAction(args: { fiscalYearId: string; memberId: string; month: number; paid: boolean }): Promise<ActionResult & { payment?: PaymentRecord }> {
+  const result = await serverApiFetch<PaymentApiResponse>('/api/payments/toggle', {
     method: 'PATCH',
     body: JSON.stringify({
       fiscalYearId: args.fiscalYearId,
       memberId: args.memberId,
       month: args.month,
+      expectedPaid: args.paid,
     }),
   });
 
-  if (!result.ok) {
+  if (!result.ok || !result.data) {
     return { ok: false, message: result.message ?? '납부 상태 변경에 실패했습니다.' };
   }
 
   refreshHome();
-  return { ok: true };
+  return { ok: true, payment: toPaymentRecord(result.data) };
+}
+
+export async function markBulkPaymentsPaidAction(args: { fiscalYearId: string; month: number; memberIds: string[] }): Promise<ActionResult & { payments?: PaymentRecord[] }> {
+  const result = await serverApiFetch<PaymentApiResponse[]>('/api/payments/bulk-paid', {
+    method: 'PATCH', body: JSON.stringify(args),
+  });
+  if (!result.ok || !result.data) return { ok: false, message: result.message ?? '일괄 납부 처리에 실패했습니다.' };
+  refreshHome();
+  return { ok: true, payments: result.data.map(toPaymentRecord) };
 }
 
 export async function updateManualPaymentExemptionAction(args: {
@@ -173,8 +185,8 @@ export async function updateManualPaymentExemptionAction(args: {
   month: number;
   exempt: boolean;
   reason?: string;
-}): Promise<ActionResult> {
-  const result = await serverApiFetch('/api/payments/exemption', {
+}): Promise<ActionResult & { payment?: PaymentRecord }> {
+  const result = await serverApiFetch<PaymentApiResponse>('/api/payments/exemption', {
     method: 'PATCH',
     body: JSON.stringify({
       fiscalYearId: args.fiscalYearId,
@@ -185,12 +197,12 @@ export async function updateManualPaymentExemptionAction(args: {
     }),
   });
 
-  if (!result.ok) {
+  if (!result.ok || !result.data) {
     return { ok: false, message: result.message ?? '수동 면제 설정 변경에 실패했습니다.' };
   }
 
   refreshHome();
-  return { ok: true };
+  return { ok: true, payment: toPaymentRecord(result.data) };
 }
 
 export async function getVapidPublicKeyAction(): Promise<ActionResult & { publicKey?: string; configured?: boolean }> {
