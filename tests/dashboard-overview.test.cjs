@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const load = require('./load-typescript.cjs');
-const { dashboardMonth, formatRecordedDate, overviewDuesRows, recentTransactions, upcomingOccurrences } = load('lib/dashboard-overview.ts');
+const { formatDuesPeriods, formatRecordedDate, groupExemptions, overviewDuesRows, recentTransactions, upcomingOccurrences } = load('lib/dashboard-overview.ts');
 const { formatOccurrenceTime, validCalendarDate } = load('lib/calendar-occurrences.ts');
 const { buildNavLinks } = load('lib/navigation.ts');
 
@@ -10,15 +10,51 @@ const now = new Date('2026-11-12T01:00:00Z');
 const member = { id: 'one', full_name: '회원', member_grade: '정회원', joined_at: '2026-05-01', fee_exemption_months: 0 };
 const event = (patch = {}) => ({ id: 'event', title: '정기운동', status: 'PLANNED', start_date: '2026-11-01', end_date: '2026-11-01', start_time: '19:00:00', end_time: '21:00:00', recurrence_type: 'WEEKLY', recurrence_until: null, recurrence_exclusion_dates: [], ...patch });
 
-test('default period follows the selected fiscal year and Korean current month', () => {
-  assert.equal(dashboardMonth(year, now), 11);
-  assert.equal(dashboardMonth({ ...year, year: 2025 }, now), 12);
-  assert.equal(dashboardMonth({ ...year, year: 2027 }, now), 5);
+test('overview includes all unpaid months from May, not just recent or current months', () => {
+  const rows = overviewDuesRows([member], [year], [], now);
+  assert.equal(Array.from(rows[0].unpaid, (cell) => cell.month).join(','), '5,6,7,8,9,10,11');
+  assert.equal(rows[0].dueAmount, 140_000);
 });
-test('overview shows only recent months and uses current-month dues amount', () => {
-  const rows = overviewDuesRows([member], year, [year], [], now);
-  assert.equal(Array.from(rows[0].cells, (cell) => cell.month).join(','), '9,10,11');
-  assert.equal(rows[0].dueAmount, 20_000);
+test('member who paid November remains an arrears member for older unpaid months', () => {
+  const payments = [{ fiscal_year_id: 'year', member_id: 'one', month: 11, paid: true, charged_amount: 20000 }];
+  const row = overviewDuesRows([member], [year], payments, now)[0];
+  assert.equal(row.unpaid.length, 6);
+  assert.equal(row.dueAmount, 120000);
+  assert.equal(formatDuesPeriods(row.unpaid), '2026년 5·6·7·8·9·10월');
+});
+test('arrears are retained across fiscal years', () => {
+  const previous = { id: 'previous', year: 2025, visible_months: [11,12] };
+  const row = overviewDuesRows([{ ...member, joined_at: '2025-01-01' }], [year, previous], [], now)[0];
+  assert.equal(row.unpaid.length, 9);
+  assert.equal(row.unpaid[0].fiscalYearId, 'previous');
+  assert.equal(row.dueAmount, 180000);
+});
+test('all arrears members are retained rather than silently capped at six', () => {
+  const people = Array.from({ length: 9 }, (_, i) => ({ ...member, id: String(i) }));
+  assert.equal(overviewDuesRows(people, [year], [], now).filter((row) => row.unpaid.length).length, 9);
+});
+test('manual and automatic exemption reasons retain their actual periods', () => {
+  const person = { ...member, fee_exemption_months: 1, fee_exemption_start_date: '2026-05-01' };
+  const payments = [{ fiscal_year_id: 'year', member_id: 'one', month: 5, paid: false, manual_exempt: true, exemption_reason: '부상' }];
+  const row = overviewDuesRows([person], [year], payments, now)[0];
+  assert.equal(row.exemptions.length, 2);
+  assert.equal(row.unpaid.length, 5);
+  const groups = groupExemptions(row.exemptions);
+  assert.equal(groups[0].detail.reason, '부상');
+  assert.equal(groups[0].periods[0].month, 5);
+  assert.equal(groups[1].detail.kind, 'automatic');
+  assert.equal(groups[1].periods[0].month, 6);
+});
+test('joining before and future periods do not enter overdue totals', () => {
+  const row = overviewDuesRows([{ ...member, joined_at: '2026-10-15' }], [year], [], now)[0];
+  assert.equal(Array.from(row.unpaid, (cell) => cell.month).join(','), '10,11');
+  assert.equal(row.dueAmount, 40000);
+});
+test('staff exemption content covers all elapsed configured months', () => {
+  const row = overviewDuesRows([{ ...member, member_grade: '간사' }], [year], [], now)[0];
+  assert.equal(row.dueAmount, 0);
+  assert.equal(row.exemptions.length, 7);
+  assert.equal(row.exemptions[0].exemption.label, '간사 면제');
 });
 test('weekly agenda uses future occurrences instead of the original event date', () => {
   const result = upcomingOccurrences([event()], now);

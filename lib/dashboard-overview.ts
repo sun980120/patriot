@@ -1,28 +1,49 @@
 import { addDays, expandOccurrences, parseDateInput, type CalendarOccurrence } from '@/lib/calendar-occurrences';
-import { duesAmount, getDuesStatus, koreanYearMonth } from '@/lib/dues';
+import { duesAmount, getDuesExemption, getDuesStatus, koreanYearMonth, type DuesExemption, type DuesStatus } from '@/lib/dues';
 import type { ClubEvent, DashboardBundle, FiscalYear, PaymentRecord, Profile } from '@/lib/types';
 
-export function dashboardMonth(year: FiscalYear, today: Date | null) {
-  const months = [...year.visible_months].sort((a, b) => a - b);
-  if (!today) return months.at(-1) ?? 1;
-  const current = koreanYearMonth(today);
-  if (year.year < current.year) return months.at(-1) ?? 12;
-  if (year.year > current.year) return months[0] ?? 1;
-  return months.filter((month) => month <= current.month).at(-1) ?? months[0] ?? 1;
-}
+export type DuesPeriod = {
+  fiscalYearId: string; year: number; month: number; status: DuesStatus;
+  amount: number; exemption: DuesExemption | null;
+};
 
-export function overviewDuesRows(members: Profile[], year: FiscalYear, years: FiscalYear[], payments: PaymentRecord[], today: Date | null) {
-  const month = dashboardMonth(year, today);
-  const recentMonths = [...year.visible_months].sort((a, b) => a - b).filter((value) => value <= month).slice(-3);
+export function overviewDuesRows(members: Profile[], years: FiscalYear[], payments: PaymentRecord[], today: Date | null) {
+  const current = today ? koreanYearMonth(today) : null;
+  const periods = [...years].sort((a, b) => a.year - b.year).flatMap((year) =>
+    [...year.visible_months].sort((a, b) => a - b).map((month) => ({ year, month }))
+      .filter(({ month }) => current && year.year * 12 + month <= current.year * 12 + current.month));
   return members.map((member) => {
     const history = payments.filter((payment) => payment.member_id === member.id);
-    const cells = recentMonths.map((value) => {
-      const payment = history.find((item) => item.fiscal_year_id === year.id && item.month === value);
-      return { month: value, payment, status: getDuesStatus(member, year, value, payment, years, history, today) };
+    const cells: DuesPeriod[] = periods.map(({ year, month }) => {
+      const payment = history.find((item) => item.fiscal_year_id === year.id && item.month === month);
+      const status = getDuesStatus(member, year, month, payment, years, history, today);
+      return { fiscalYearId: year.id, year: year.year, month, status, amount: status === 'due' ? duesAmount(member) : payment?.paid ? payment.charged_amount : 0, exemption: getDuesExemption(member, payment, status) };
     });
-    const current = cells.find((cell) => cell.month === month);
-    return { member, cells, status: current?.status ?? 'future', dueAmount: current?.status === 'due' ? duesAmount(member) : 0 };
+    const unpaid = cells.filter((cell) => cell.status === 'due');
+    const exemptions = cells.filter((cell) => cell.status === 'exempt');
+    return { member, cells, unpaid, exemptions, dueAmount: unpaid.reduce((sum, cell) => sum + cell.amount, 0) };
   });
+}
+
+export function formatDuesPeriods(periods: { year: number; month: number }[]) {
+  const grouped = new Map<number, Set<number>>();
+  periods.forEach(({ year, month }) => {
+    if (!grouped.has(year)) grouped.set(year, new Set());
+    grouped.get(year)!.add(month);
+  });
+  return [...grouped].sort(([a], [b]) => a - b)
+    .map(([year, months]) => `${year}년 ${[...months].sort((a, b) => a - b).join('·')}월`).join(' / ');
+}
+
+export function groupExemptions(periods: DuesPeriod[]) {
+  const groups = new Map<string, { detail: DuesExemption; periods: DuesPeriod[] }>();
+  for (const period of periods) {
+    if (!period.exemption) continue;
+    const key = `${period.exemption.kind}:${period.exemption.reason}`;
+    if (!groups.has(key)) groups.set(key, { detail: period.exemption, periods: [] });
+    groups.get(key)!.periods.push(period);
+  }
+  return [...groups.values()];
 }
 
 export type RecentTransaction = { id: string; title: string; description: string; amount: number; direction: 'income' | 'expense'; recordedAt: string | null };

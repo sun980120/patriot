@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const loadTypescript = require('./load-typescript.cjs');
 
-const { getDuesStatus, isFeeExempt, koreanYearMonth, duesAmount } = loadTypescript('lib/dues.ts');
+const { getDuesStatus, getDuesExemption, isFeeExempt, koreanYearMonth, duesAmount } = loadTypescript('lib/dues.ts');
 const year = { id: '2026', year: 2026, visible_months: [5, 6, 7, 8, 9, 10, 11, 12] };
 const member = { id: 'member', member_grade: '정회원', joined_at: '2026-05-02T09:00:00', fee_exemption_months: 0, fee_exemption_start_date: null };
 const now = new Date('2026-11-11T00:00:00Z');
@@ -55,4 +55,19 @@ test('mixed membership grades retain their actual fee rates', () => {
   assert.equal(duesAmount(member), 20_000);
   assert.equal(duesAmount({ ...member, member_grade: '준회원' }), 10_000);
   assert.equal(duesAmount({ ...member, member_grade: '간사' }), 0);
+});
+test('exemption details preserve manual reasons without classifying paid records as exempt', () => {
+  const record = payment(11, { manual_exempt: true, exemption_reason: ' 부상 ' });
+  assert.equal(getDuesExemption(member, record, 'exempt').reason, '부상');
+  assert.equal(getDuesExemption(member, record, 'exempt').label, '수동 면제');
+  assert.equal(getDuesExemption(member, record, 'paid'), null);
+});
+test('missing exemption reason is explicit rather than invented', () => {
+  assert.equal(getDuesExemption(member, payment(11, { manual_exempt: true }), 'exempt').reason, '사유 미입력');
+});
+test('automatic exemption describes its start date and configured allowance', () => {
+  const person = { ...member, fee_exemption_months: 2, fee_exemption_start_date: '2026-05-01' };
+  const details = getDuesExemption(person, undefined, 'exempt');
+  assert.equal(details.kind, 'automatic');
+  assert.equal(details.reason, '2026-05-01 시작 · 2회 면제');
 });

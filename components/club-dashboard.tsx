@@ -10,8 +10,11 @@ import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 import { AdminDuesManagement } from '@/components/admin-dues-management';
 import { DashboardOverview } from '@/components/dashboard-overview';
 import { MemberDuesHistory } from '@/components/member-dues-history';
+import { MemberAdditionalCharges } from '@/components/member-additional-charges';
+import { summarizeFinance } from '@/lib/finance-summary';
 import { ResponsiveDialog } from '@/components/ui/responsive-dialog';
-import { duesAmount, getDuesStatus, isFeeExempt } from '@/lib/dues';
+import { duesAmount, getDuesExemption, getDuesStatus, isFeeExempt } from '@/lib/dues';
+import { DuesExemptionNote } from '@/components/dues-exemption-note';
 import { Bell, Check, Copy, Info, Landmark } from 'lucide-react';
 
 function isAdmin(profile: Profile | null) {
@@ -23,10 +26,6 @@ const GRADE_ORDER: Record<Profile['member_grade'], number> = {
   정회원: 1,
   준회원: 2,
 };
-
-function paymentAmount(payment?: PaymentRecord) {
-  return payment?.paid ? payment.charged_amount : 0;
-}
 
 function compareMembers(a: Profile, b: Profile) {
   const gradeDiff = GRADE_ORDER[a.member_grade] - GRADE_ORDER[b.member_grade];
@@ -97,9 +96,9 @@ function formatMonthlyPeriods(periods: { year: number; month: number }[]) {
     .join(', ');
 }
 
-export function ClubDashboard({ initialData, source, events = null, view = 'overview', initialYearId, initialDuesMonth, initialDuesFilter }: {
+export function ClubDashboard({ initialData, source, events = null, view = 'overview', initialYearId, initialDuesMonth, initialDuesFilter, initialMemberId, initialArrears = false }: {
   initialData: DashboardBundle; source: 'mock' | 'spring'; events?: ClubEvent[] | null;
-  view?: 'overview' | 'dues'; initialYearId?: string; initialDuesMonth?: number; initialDuesFilter?: 'all' | 'due';
+  view?: 'overview' | 'dues'; initialYearId?: string; initialDuesMonth?: number; initialDuesFilter?: 'all' | 'due' | 'exempt'; initialMemberId?: string; initialArrears?: boolean;
 }) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
@@ -140,6 +139,12 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
   const fiscalYears = data.fiscalYears;
   const selectedYear = fiscalYears.find((item) => item.id === selectedYearId) ?? fiscalYears[0];
   const hasFiscalYear = Boolean(selectedYear);
+
+  useEffect(() => {
+    setPaymentActionTarget(null);
+    setPaymentGuide(null);
+    setShowReminders(false);
+  }, [view, selectedYearId]);
 
   useEffect(() => {
     if (!paymentActionTarget || !selectedYear) {
@@ -193,21 +198,10 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
     [data.profiles]
   );
 
-  const yearIncomes = useMemo(
-    () => (selectedYear ? data.incomes.filter((item) => item.fiscal_year_id === selectedYear.id) : []),
-    [data.incomes, selectedYear]
-  );
-
-  const yearExpenses = useMemo(
-    () => (selectedYear ? data.expenses.filter((item) => item.fiscal_year_id === selectedYear.id) : []),
-    [data.expenses, selectedYear]
-  );
-
   const memberChargeAssignments = useMemo(() => {
     if (!selectedYear || !profile) return [];
 
     return data.chargeGroups
-      .filter((group) => group.fiscal_year_id === selectedYear.id)
       .flatMap((group) =>
         group.participant_charges
           .filter((charge) => charge.member_id === profile.id)
@@ -298,41 +292,7 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
       });
   }, [activeApprovedProfiles, data.chargeGroups, selectedYear]);
 
-  const summary = useMemo(() => {
-    const yearMembershipIncome = selectedYear
-      ? data.payments
-          .filter((item) => item.fiscal_year_id === selectedYear.id)
-          .reduce((sum, item) => sum + paymentAmount(item), 0)
-      : 0;
-
-    const yearAdditionalChargeIncome = selectedYear
-      ? data.chargeGroups
-          .filter((group) => group.fiscal_year_id === selectedYear.id)
-          .reduce((sum, group) => sum + group.participant_paid_total, 0)
-      : 0;
-
-    const otherIncome = yearIncomes
-      .filter((item) => !item.charge_group_id)
-      .reduce((sum, item) => sum + item.amount, 0);
-    const totalExpense = yearExpenses.reduce((sum, item) => sum + item.amount, 0);
-    const cumulativeOtherIncome = data.incomes
-      .filter((item) => !item.charge_group_id)
-      .reduce((sum, item) => sum + item.amount, 0);
-    const cumulativeExpense = data.expenses.reduce((sum, item) => sum + item.amount, 0);
-    const cumulativeMembershipIncome = data.payments.reduce((sum, item) => sum + paymentAmount(item), 0);
-    const cumulativeAdditionalChargeIncome = data.chargeGroups.reduce((sum, group) => sum + group.participant_paid_total, 0);
-
-    return {
-      membershipIncome: yearMembershipIncome,
-      additionalChargeIncome: yearAdditionalChargeIncome,
-      otherIncome,
-      totalIncome: yearMembershipIncome + yearAdditionalChargeIncome + otherIncome,
-      totalExpense,
-      balance: yearMembershipIncome + yearAdditionalChargeIncome + otherIncome - totalExpense,
-      cumulativeBalance:
-        cumulativeMembershipIncome + cumulativeAdditionalChargeIncome + cumulativeOtherIncome - cumulativeExpense,
-    };
-  }, [data.chargeGroups, data.expenses, data.incomes, data.payments, selectedYear, yearExpenses, yearIncomes]);
+  const summary = useMemo(() => summarizeFinance(data, selectedYear?.id ?? ''), [data, selectedYear]);
 
   const mergePaymentRecords = (records: PaymentRecord[]) => {
     setData((current) => ({
@@ -730,20 +690,20 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
       {view === 'overview' ? (
         <DashboardOverview data={data} year={selectedYear} members={filteredProfiles} admin={adminMode}
           today={today} summary={summary} events={events} source={source} pendingCount={pendingProfiles.length}
-          additionalUnpaidCount={additionalReminderTargets.length} assignments={memberChargeAssignments}
-          memberNotice={currentMonthReminder?.currentUserTarget ?? null} onYearChange={setSelectedYearId}
-          onOpenPayment={openPaymentAction}
-          onOpenGuide={(memberName, amount, label) => { setActionMessage(''); setPaymentGuide({ memberName, amount, label }); }}
-          onOpenReminders={() => { setActionMessage(''); setShowReminders(true); }} onRefresh={() => router.refresh()} />
-      ) : adminMode ? (
-        <AdminDuesManagement key={`${selectedYear.id}:${initialDuesMonth ?? ''}:${initialDuesFilter ?? ''}`}
-          year={selectedYear} fiscalYears={fiscalYears} members={filteredProfiles} payments={data.payments}
-          today={today} onYearChange={setSelectedYearId} onOpenPayment={openPaymentAction}
-          onBulkPaid={handleBulkPaid} newYearInput={newYearInput} onNewYearInputChange={setNewYearInput}
-          onCreateYear={addYear} initialMonth={initialDuesMonth} initialFilter={initialDuesFilter} />
+          onYearChange={setSelectedYearId} onRefresh={() => router.refresh()} />
       ) : (
-        <MemberDuesHistory member={filteredProfiles[0]} year={selectedYear} years={fiscalYears}
-          payments={data.payments} today={today} onYearChange={setSelectedYearId} onPay={openMonthlyPaymentGuide} />
+        <>
+          {adminMode ? <AdminDuesManagement key={`${selectedYear.id}:${initialDuesMonth ?? ''}:${initialDuesFilter ?? ''}:${initialMemberId ?? ''}:${initialArrears}`}
+            year={selectedYear} fiscalYears={fiscalYears} members={filteredProfiles} payments={data.payments}
+            today={today} onYearChange={setSelectedYearId} onOpenPayment={openPaymentAction}
+            onBulkPaid={handleBulkPaid} newYearInput={newYearInput} onNewYearInputChange={setNewYearInput}
+            onCreateYear={addYear} initialMonth={initialDuesMonth} initialFilter={initialDuesFilter}
+            initialMemberId={initialMemberId} initialArrears={initialArrears} onOpenReminders={() => { setActionMessage(''); setShowReminders(true); }} />
+            : <MemberDuesHistory member={filteredProfiles[0]} year={selectedYear} years={fiscalYears}
+                payments={data.payments} today={today} onYearChange={setSelectedYearId} onPay={openMonthlyPaymentGuide} />}
+          {!adminMode || memberChargeAssignments.length ? <MemberAdditionalCharges assignments={memberChargeAssignments} profile={profile}
+            onOpenGuide={(memberName, amount, label) => { setActionMessage(''); setPaymentGuide({ memberName, amount, label }); }} /> : null}
+        </>
       )}
       {showReminders && adminMode ? (
         <ResponsiveDialog title="미납 알림" busy={isPending} onClose={() => setShowReminders(false)}>
@@ -782,7 +742,7 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
             <>
               <label className="mb-4 block text-sm text-slate-600">면제 사유 (선택)<input value={paymentExemptionReason} onChange={(event) => setPaymentExemptionReason(event.target.value)} disabled={paymentSaving || paymentActionAutoExempt || paymentActionManualExempt} type="text" maxLength={255} placeholder="예: 부상, 장기 결석" className="mt-2 min-h-11 w-full rounded-md border border-slate-200 px-3 text-base disabled:bg-slate-50 sm:text-sm" /></label>
               <button type="button" disabled={paymentSaving || !paymentActionCanManualExempt} onClick={() => void handlePaymentActionManualExemption(paymentActionTarget.member, paymentActionTarget.month, !paymentActionManualExempt)} className="min-h-11 w-full rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40">{paymentSaving ? '처리 중…' : paymentActionManualExempt ? '면제 해제' : '면제 적용'}</button>
-              {paymentActionAutoExempt ? <p className="mt-3 text-xs text-slate-500">가입 면제 기간이 자동 적용된 회비입니다.</p> : null}
+              {paymentActionAutoExempt ? <DuesExemptionNote detail={getDuesExemption(paymentActionTarget.member, paymentActionPayment, 'exempt')} /> : null}
             </>
           )}
           {actionMessage && toastTone === 'error' ? <p role="alert" className="mt-3 text-sm text-rose-700">{actionMessage}</p> : null}

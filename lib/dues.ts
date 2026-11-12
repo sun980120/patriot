@@ -47,3 +47,17 @@ export function getDuesStatus(member: Profile, year: FiscalYear, month: number, 
 }
 
 export function duesAmount(member: Profile) { return ROLE_META[member.member_grade].fee; }
+
+export type DuesExemption = { kind: 'staff' | 'manual' | 'automatic'; label: string; reason: string };
+
+export function getDuesExemption(member: Profile, payment: PaymentRecord | undefined, status: DuesStatus): DuesExemption | null {
+  if (status !== 'exempt') return null;
+  if (payment?.manual_exempt) return { kind: 'manual', label: '수동 면제', reason: payment.exemption_reason?.trim() || '사유 미입력' };
+  if (member.member_grade === '간사') return { kind: 'staff', label: '간사 면제', reason: '간사 회비 면제' };
+  return {
+    kind: 'automatic', label: '가입 면제',
+    reason: member.fee_exemption_start_date
+      ? `${member.fee_exemption_start_date} 시작 · ${member.fee_exemption_months}회 면제`
+      : '가입 면제 기간 적용',
+  };
+}
