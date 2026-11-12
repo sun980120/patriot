@@ -17,8 +17,15 @@ import {
 } from '@/app/actions';
 import { HIDDEN_PROFILE_EMAILS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
-import type { AdditionalChargeCategory, ChargeGroup, DashboardBundle, ExpenseEntry, IncomeEntry, ParticipantCharge, Profile } from '@/lib/types';
+import type { AdditionalChargeCategory, ChargeGroup, DashboardBundle, ExpenseEntry, IncomeEntry, ParticipantCharge } from '@/lib/types';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
+import { PageHeading } from '@/components/ui/page-heading';
+import { ResponsiveDialog } from '@/components/ui/responsive-dialog';
+import { SettlementBreakdown } from '@/components/settlement-breakdown';
+import { calculateChargeSettlement } from '@/lib/charge-settlement';
+import { summarizeFinance } from '@/lib/finance-summary';
+import { formatRecordedDate, recentTransactions } from '@/lib/dashboard-overview';
+import { ArrowUpRight, ChevronDown, Download, Plus, Trash2 } from 'lucide-react';
 
 const CATEGORY_LABELS: Record<AdditionalChargeCategory, string> = {
   JOIN_FEE: '가입비',
@@ -41,7 +48,7 @@ function parseNumberInput(value: string) {
   return digits ? Number(digits) : 0;
 }
 
-export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle; source: 'mock' | 'spring' }) {
+export function FinanceManagement({ bundle, source, initialView = 'ledger' }: { bundle: DashboardBundle; source: 'mock' | 'spring'; initialView?: 'ledger' | 'charges' | 'income' | 'expense' }) {
   const router = useRouter();
   const [data, setData] = useState(bundle);
   const [selectedYearId, setSelectedYearId] = useState(bundle.selectedYear?.id ?? bundle.fiscalYears[0]?.id ?? '');
@@ -66,6 +73,9 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const [chargeFilter, setChargeFilter] = useState<'settlement_pending' | 'settlement_completed'>('settlement_pending');
   const [chargeAmountForms, setChargeAmountForms] = useState<Record<string, { amount: string; reason: string }>>({});
   const [settlementActualCostForms, setSettlementActualCostForms] = useState<Record<string, string>>({});
+  const [financeView, setFinanceView] = useState<'ledger' | 'charges' | 'income' | 'expense'>(initialView);
+  const [showChargeForm, setShowChargeForm] = useState(false);
+  const [settlementTarget, setSettlementTarget] = useState<{ groupId: string; actualCost: number } | null>(null);
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
@@ -83,7 +93,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   const years = data.fiscalYears;
   const selectedYear = years.find((item) => item.id === selectedYearId) ?? years[0];
   const incomes = useMemo(
-    () => data.incomes.filter((item) => item.fiscal_year_id === selectedYear?.id),
+    () => data.incomes.filter((item) => item.fiscal_year_id === selectedYear?.id && !item.charge_group_id),
     [data.incomes, selectedYear]
   );
   const expenses = useMemo(
@@ -124,8 +134,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
 
   const incomeTotal = incomes.reduce((sum, item) => sum + item.amount, 0);
   const expenseTotal = expenses.reduce((sum, item) => sum + item.amount, 0);
-  const extraChargeTotal = allChargeGroups.reduce((sum, group) => sum + group.participant_charge_total, 0);
-  const extraChargePaidTotal = allChargeGroups.reduce((sum, group) => sum + group.participant_paid_total, 0);
+  const annualSummary = useMemo(() => summarizeFinance(data, selectedYear?.id ?? '').annual, [data, selectedYear]);
   const reportExportHref = selectedYear
     ? `/api/admin/finance-report/export?fiscalYearId=${encodeURIComponent(selectedYear.id)}`
     : '#';
@@ -491,90 +500,50 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   };
 
   const settleGroupSurplus = (group: ChargeGroup) => {
-    if (isPending) {
-      setToastTone('error');
-      setMessage('납부 상태를 동기화하는 중입니다. 잠시 후 다시 시도해 주세요.');
-      return;
+    if (isPending || group.settlement_completed) return;
+    if (group.participant_charges.some((charge) => charge.status !== 'PAID')) {
+      setToastTone('error'); setMessage('모든 참가자의 납부를 확인한 뒤 정산해 주세요.'); return;
     }
-
-    const unpaidCount = group.participant_charges.filter((charge) => charge.status !== 'PAID').length;
-    if (unpaidCount > 0) {
-      setToastTone('error');
-      setMessage('모든 참가자가 납부 완료된 뒤에만 정산 완료를 진행할 수 있습니다.');
-      return;
-    }
-
     const actualCost = parseNumberInput(settlementActualCostForms[group.id] ?? (group.actual_cost ? String(group.actual_cost) : ''));
-    if (!Number.isFinite(actualCost) || actualCost <= 0) {
-      setToastTone('error');
-      setMessage('정산할 실제 사용금액을 입력해 주세요.');
-      return;
+    if (!Number.isSafeInteger(actualCost) || actualCost <= 0) {
+      setToastTone('error'); setMessage('실제 사용금액을 입력해 주세요.'); return;
     }
+    setMessage(''); setSettlementTarget({ groupId: group.id, actualCost });
+  };
 
-    setMessage('');
-    const nextSurplus = Math.max(group.participant_paid_total - Math.max(actualCost - group.support_amount, 0), 0);
-    const supportExpenseAmount = group.support_amount;
-    const participantExpenseAmount = Math.max(actualCost - supportExpenseAmount, 0);
-    setData((current) => ({
-      ...current,
-      expenses: [
-        ...(supportExpenseAmount > 0
-          ? [
-              {
-                id: `${group.id}-support-expense`,
-                fiscal_year_id: group.fiscal_year_id,
-                charge_group_id: group.id,
-                label: `${group.title} 공용 지원`,
-                amount: supportExpenseAmount,
-                memo: group.memo,
-              } as ExpenseEntry,
-            ]
-          : []),
-        ...(participantExpenseAmount > 0
-          ? [
-              {
-                id: `${group.id}-participant-expense`,
-                fiscal_year_id: group.fiscal_year_id,
-                charge_group_id: group.id,
-                label: `${group.title} 참가자 부담`,
-                amount: participantExpenseAmount,
-                memo: group.memo,
-              } as ExpenseEntry,
-            ]
-          : []),
-        ...current.expenses.filter((item) => item.charge_group_id !== group.id),
-      ],
-      incomes: nextSurplus > 0
-        ? [{
-            id: `${group.id}-surplus-income`,
-            fiscal_year_id: group.fiscal_year_id,
-            charge_group_id: group.id,
-            label: `${group.title} 잔액 반영`,
-            amount: nextSurplus,
-            memo: '추가 비용 정산 후 남은 금액',
-          }, ...current.incomes.filter((item) => item.charge_group_id !== group.id)]
-        : current.incomes.filter((item) => item.charge_group_id !== group.id),
-      chargeGroups: current.chargeGroups.map((item) =>
-        item.id === group.id
-          ? { ...item, actual_cost: actualCost, settlement_completed: true, surplus_amount: nextSurplus }
-          : item
-      ),
-    }));
-
-    if (source === 'spring') {
-      startTransition(async () => {
-        const result = await settleAdditionalChargeSurplusAction(group.id, actualCost);
-        if (!result.ok) {
-          setToastTone('error');
-          setMessage(result.message ?? '잔액 세입 처리에 실패했습니다.');
-          router.refresh();
-          return;
+  const confirmSettlement = () => {
+    if (isPending || !settlementTarget) return;
+    const group = data.chargeGroups.find((item) => item.id === settlementTarget.groupId);
+    if (!group || group.settlement_completed || group.participant_charges.some((charge) => charge.status !== 'PAID')) {
+      setToastTone('error'); setMessage('정산 대상 상태가 변경되었습니다. 다시 확인해 주세요.'); return;
+    }
+    const { actualCost } = settlementTarget;
+    const calculation = calculateChargeSettlement(group.support_amount, group.participant_paid_total, actualCost);
+    startTransition(async () => {
+      try {
+        if (source === 'spring') {
+          const result = await settleAdditionalChargeSurplusAction(group.id, actualCost);
+          if (!result.ok) { setToastTone('error'); setMessage(result.message ?? '정산에 실패했습니다.'); router.refresh(); return; }
+        } else {
+          setData((current) => ({
+            ...current,
+            expenses: [
+              ...(calculation.appliedSupport > 0 ? [{ id: `${group.id}-support-expense`, fiscal_year_id: group.fiscal_year_id, charge_group_id: group.id, label: `${group.title} 공용 지원`, amount: calculation.appliedSupport, memo: group.memo }] : []),
+              ...(calculation.participantExpense > 0 ? [{ id: `${group.id}-participant-expense`, fiscal_year_id: group.fiscal_year_id, charge_group_id: group.id, label: `${group.title} 참가자 부담`, amount: calculation.participantExpense, memo: group.memo }] : []),
+              ...current.expenses.filter((item) => item.charge_group_id !== group.id),
+            ],
+            incomes: [
+              ...(calculation.surplus > 0 ? [{ id: `${group.id}-surplus-income`, fiscal_year_id: group.fiscal_year_id, charge_group_id: group.id, label: `${group.title} 정산 잔액(참고)`, amount: calculation.surplus, memo: '추가 비용 수납에 포함된 정산 참고 금액' }] : []),
+              ...current.incomes.filter((item) => item.charge_group_id !== group.id),
+            ],
+            chargeGroups: current.chargeGroups.map((item) => item.id === group.id ? { ...item, actual_cost: actualCost, settlement_completed: true, surplus_amount: calculation.surplus } : item),
+          }));
         }
-        setToastTone('success');
-        setMessage(`${group.title} 이벤트가 정산 완료되었습니다.`);
-        router.refresh();
-      });
-    }
+        setSettlementTarget(null); setChargeFilter('settlement_completed'); setExpandedGroupId(group.id);
+        setToastTone('success'); setMessage(`${group.title} 정산을 완료했습니다.`);
+        if (source === 'spring') router.refresh();
+      } catch { setToastTone('error'); setMessage('서버에 연결하지 못했습니다. 다시 시도해 주세요.'); }
+    });
   };
 
   const deleteChargeGroup = (groupId: string) => {
@@ -604,36 +573,21 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   };
 
   const reopenSettlement = (group: ChargeGroup) => {
+    if (isPending) return;
     setMessage('');
-    setData((current) => ({
-      ...current,
-      chargeGroups: current.chargeGroups.map((item) =>
-        item.id === group.id
-          ? { ...item, settlement_completed: false, surplus_amount: 0 }
-          : item
-      ),
-      incomes: current.incomes.filter((item) => item.charge_group_id !== group.id),
-      expenses: current.expenses.filter((item) => item.charge_group_id !== group.id),
-    }));
-
-    if (source === 'spring') {
-      startTransition(async () => {
-        const result = await reopenAdditionalChargeSettlementAction(group.id);
-        if (!result.ok) {
-          setToastTone('error');
-          setMessage(result.message ?? '정산 수정 모드 전환에 실패했습니다.');
-          router.refresh();
-          return;
+    startTransition(async () => {
+      try {
+        if (source === 'spring') {
+          const result = await reopenAdditionalChargeSettlementAction(group.id);
+          if (!result.ok) { setToastTone('error'); setMessage(result.message ?? '정산 수정 모드 전환에 실패했습니다.'); router.refresh(); return; }
+        } else {
+          setData((current) => ({ ...current, chargeGroups: current.chargeGroups.map((item) => item.id === group.id ? { ...item, settlement_completed: false } : item) }));
         }
-        setToastTone('success');
-        setMessage(`${group.title} 이벤트를 다시 수정할 수 있습니다.`);
-        router.refresh();
-      });
-      return;
-    }
-
-    setToastTone('success');
-    setMessage(`${group.title} 이벤트를 다시 수정할 수 있습니다.`);
+        setChargeFilter('settlement_pending'); setExpandedGroupId(group.id);
+        setToastTone('success'); setMessage('기존 장부를 유지한 채 정산 수정 모드로 전환했습니다.');
+        if (source === 'spring') router.refresh();
+      } catch { setToastTone('error'); setMessage('서버에 연결하지 못했습니다. 다시 시도해 주세요.'); }
+    });
   };
 
   const sendChargeReminder = (group: ChargeGroup) => {
@@ -669,19 +623,14 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
   return (
     <>
       <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
-      <div className="space-y-8">
-      <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Finance Pages</p>
-        <h2 className="mt-2 text-3xl font-black text-slate-900">세입 / 지출 / 추가 비용 관리</h2>
-        <p className="mt-2 text-sm text-slate-500">월회비와 분리해서, 대회비·회식비·유니폼비 같은 추가 비용은 이벤트 단위로 생성하고 참가자별로 납부 상태를 관리합니다.</p>
+      <div className="workspace-page space-y-6" aria-busy={isPending}>
+      <section className="workspace-section">
+        <PageHeading title="재정 관리" description={selectedYear ? `${selectedYear.year}년 · 수납·지출·추가 비용 정산` : undefined} />
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-            <span className="rounded-full bg-slate-100 px-3 py-2">기준 연도: {selectedYear?.year}년</span>
-            <span className="rounded-full bg-slate-100 px-3 py-2">기타 세입 {formatCurrency(incomeTotal)}</span>
-            <span className="rounded-full bg-slate-100 px-3 py-2">지출 {formatCurrency(expenseTotal)}</span>
-            <span className="rounded-full bg-slate-100 px-3 py-2">추가 비용 청구 {formatCurrency(extraChargeTotal)}</span>
-            <span className="rounded-full bg-slate-100 px-3 py-2">추가 비용 납부 {formatCurrency(extraChargePaidTotal)}</span>
-            <span className="rounded-full bg-slate-100 px-3 py-2">{source === 'spring' ? 'Spring API' : 'Mock'} {isPending ? '동기화 중' : '연결됨'}</span>
+          <div className="grid flex-1 grid-cols-3 gap-5 border-y border-slate-200 py-4">
+            <div><p className="text-xs text-slate-500">총세입</p><p className="mt-1 text-lg font-semibold tabular-nums">{formatCurrency(annualSummary.totalIncome)}</p></div>
+            <div><p className="text-xs text-slate-500">총지출</p><p className="mt-1 text-lg font-semibold tabular-nums">{formatCurrency(annualSummary.totalExpense)}</p></div>
+            <div><p className="text-xs text-slate-500">연도 증감</p><p className="mt-1 text-lg font-semibold tabular-nums">{formatCurrency(annualSummary.balance)}</p></div>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <label className="block">
@@ -704,7 +653,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                   : 'pointer-events-none bg-slate-200 text-slate-400'
               }`}
             >
-              재정 리포트 CSV
+              <Download className="mr-2 h-4 w-4" />CSV
             </a>
             <a
               href={reportExcelExportHref}
@@ -714,28 +663,35 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                   : 'pointer-events-none bg-slate-200 text-slate-400'
               }`}
             >
-              재정 리포트 Excel
+              <Download className="mr-2 h-4 w-4" />Excel
             </a>
           </div>
         </div>
       </section>
 
-      <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
+      <div role="group" aria-label="재정 관리 보기" className="flex flex-wrap gap-5 border-b border-slate-200">
+        {(['ledger', 'charges', 'income', 'expense'] as const).map((value) => <button key={value} type="button" aria-pressed={financeView === value} onClick={() => setFinanceView(value)} className={`min-h-11 border-b-2 text-sm ${financeView === value ? 'border-emerald-700 font-semibold text-slate-900' : 'border-transparent text-slate-500'}`}>{{ ledger: '전체 내역', charges: '추가 비용 정산', income: '기타 세입', expense: '지출' }[value]}</button>)}
+      </div>
+      {financeView === 'ledger' && selectedYear ? <FinanceLedger data={data} fiscalYearId={selectedYear.id} /> : null}
+      {financeView === 'charges' ? (
+      <section className="workspace-section">
         <div className="flex flex-col gap-3 border-b border-slate-200/80 pb-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Additional Charges</p>
-            <h3 className="mt-2 text-xl font-black text-slate-900">대회비 / 회식비 / 유니폼비 정산</h3>
-            <p className="mt-2 text-sm text-slate-500">스크롤 부담을 줄이기 위해 이벤트는 기본 접힘 상태로 보이고, 눌렀을 때만 납부/미납 참가자 목록이 열립니다.</p>
+
+            <h2 className="workspace-section-title">추가 비용 정산</h2>
+
           </div>
           <input
             value={groupSearch}
             onChange={(event) => setGroupSearch(event.target.value)}
             type="text"
-            placeholder="이벤트명, 참가자 이름/아이디 검색"
+            placeholder="추가 비용명, 참가자 이름/아이디 검색"
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none lg:max-w-sm"
           />
         </div>
 
+        <button type="button" onClick={() => setShowChargeForm((value) => !value)} aria-expanded={showChargeForm} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-semibold text-emerald-800"><Plus className="h-4 w-4" />추가 비용 생성</button>
+        {showChargeForm ? <div className="border-b border-slate-200 pb-5">
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.35fr]">
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
             <p className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">계산 방식</p>
@@ -749,7 +705,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                     : 'bg-white text-slate-600 hover:text-brand-800'
                 }`}
               >
-                총 지출 N빵
+                총액 균등 분담
               </button>
               <button
                 type="button"
@@ -760,7 +716,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                     : 'bg-white text-slate-600 hover:text-brand-800'
                 }`}
               >
-                1인당 금액 직접 입력
+                1인 금액 지정
               </button>
             </div>
             <p className="mt-2 px-2 text-xs font-semibold text-slate-500">
@@ -858,7 +814,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              {chargeForm.chargeMode === 'manual' ? '예상 정산 잔액' : '예상 잔액 세입'}
+              예상 정산 잔액 · 참고
             </p>
             <p className="mt-2 text-lg font-black text-slate-900">{formatCurrency(calculatedSurplusPreview)}</p>
           </div>
@@ -897,12 +853,13 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600">선택 인원 {chargeForm.participantIds.length}명</span>
-            <button onClick={createChargeGroup} className="rounded-2xl bg-brand-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-brand-800">추가 비용 이벤트 생성</button>
+            <button onClick={createChargeGroup} className="rounded-2xl bg-brand-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-brand-800">생성</button>
           </div>
         </div>
 
+        </div> : null}
         <div className="mt-6 flex flex-wrap gap-2">
-          <button onClick={() => setChargeFilter('settlement_pending')} className={`rounded-full px-4 py-2 text-sm font-semibold ${chargeFilter === 'settlement_pending' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>미납</button>
+          <button onClick={() => setChargeFilter('settlement_pending')} className={`rounded-full px-4 py-2 text-sm font-semibold ${chargeFilter === 'settlement_pending' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>정산 대기</button>
           <button onClick={() => setChargeFilter('settlement_completed')} className={`rounded-full px-4 py-2 text-sm font-semibold ${chargeFilter === 'settlement_completed' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>정산 완료</button>
         </div>
 
@@ -925,13 +882,14 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                 <button
                   type="button"
                   onClick={() => setExpandedGroupId((current) => (current === group.id ? null : group.id))}
+                  aria-expanded={expanded}
                   className="flex w-full flex-col gap-3 text-left lg:flex-row lg:items-start lg:justify-between"
                 >
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">{CATEGORY_LABELS[group.category]}</p>
                     <h4 className="mt-1 text-lg font-black text-slate-900">{group.title}</h4>
                     <p className="mt-2 text-sm text-slate-500">
-                      마감 {group.event_date ?? '미정'} · 공용 지원 {formatCurrency(group.support_amount)}
+                      마감 {group.event_date ?? '미정'} · 예정 회비 지원 {formatCurrency(group.support_amount)}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
                       <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">참가 {group.participant_charges.length}명</span>
@@ -941,16 +899,14 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                       <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">실납부 {formatCurrency(group.participant_paid_total)}</span>
                     </div>
                   </div>
-                  <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-                    {expanded ? '접기' : '열어서 납부/미납 보기'}
-                  </div>
+                  <ChevronDown aria-hidden="true" className={`mt-1 h-5 w-5 shrink-0 text-slate-500 ${expanded ? 'rotate-180' : ''}`} />
                 </button>
 
                 {expanded ? (
                   <div className="mt-4 border-t border-slate-100 pt-4">
                     <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
                       {group.settlement_completed ? (
-                        <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">정산 완료된 이벤트입니다</span>
+                        <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">정산 완료</span>
                       ) : canSettle ? (
                         <span className="rounded-full bg-brand-50 px-3 py-2 text-brand-800">전원 납부 완료, 정산 진행 가능</span>
                       ) : (
@@ -976,7 +932,7 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                           className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
                         />
                         <p className="mt-2 text-xs font-semibold text-slate-500">
-                          참가자 실납부액에서 실제 참가자 부담 지출을 제외한 남은 금액이 세입으로 반영됩니다.
+                          회비 순부담 = 실제 총지출 − 참가자 실납부액. 정산 잔액과 별도로 표시합니다.
                         </p>
                       </div>
                     ) : null}
@@ -1020,17 +976,20 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                           onClick={() => deleteChargeGroup(group.id)}
                           className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-100"
                         >
-                          이벤트 삭제
+                          추가 비용 삭제
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs font-semibold">
                         <span className="rounded-full bg-slate-100 px-3 py-2 text-slate-600">
                           {group.settlement_completed ? '실제 사용금액' : '정산 기준 비용'} {formatCurrency(group.actual_cost ?? 0)}
                         </span>
-                        <span className="rounded-full bg-brand-50 px-3 py-2 text-brand-800">세입 반영 잔액 {formatCurrency(group.surplus_amount)}</span>
+                        <span className="rounded-full bg-brand-50 px-3 py-2 text-brand-800">정산 잔액(참고) {formatCurrency(group.surplus_amount)}</span>
                         {group.settlement_completed ? <span className="rounded-full bg-emerald-100 px-3 py-2 text-emerald-900">정산 완료</span> : null}
                       </div>
                     </div>
+                    <SettlementBreakdown plannedSupport={group.support_amount} paidTotal={group.participant_paid_total}
+                      actualCost={group.settlement_completed ? group.actual_cost ?? 0 : parseNumberInput(settlementActualCostValue)}
+                      settled={group.settlement_completed} recordedExpense={data.expenses.filter((entry) => entry.charge_group_id === group.id).reduce((sum, entry) => sum + entry.amount, 0)} />
                     {group.memo ? <p className="mt-3 text-sm text-slate-500">{group.memo}</p> : null}
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-sm text-slate-500">
@@ -1144,12 +1103,13 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
                 ) : null}
               </div>
             );
-          }) : <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">등록된 추가 비용 이벤트가 없습니다.</div>}
+          }) : <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">등록된 추가 비용이 없습니다.</div>}
         </div>
       </section>
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <CrudFinanceList
+      ) : null}
+      <div>
+        {financeView === 'income' ? <CrudFinanceList
           title="기타 세입 관리"
           kind="income"
           total={incomeTotal}
@@ -1160,8 +1120,8 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           onAmountChange={(value) => setIncomeForm((current) => ({ ...current, amount: value }))}
           onAdd={() => addEntry('income')}
           onDelete={(id) => removeEntry('income', id)}
-        />
-        <CrudFinanceList
+        /> : null}
+        {financeView === 'expense' ? <CrudFinanceList
           title="지출 관리"
           kind="expense"
           total={expenseTotal}
@@ -1172,9 +1132,17 @@ export function FinanceManagement({ bundle, source }: { bundle: DashboardBundle;
           onAmountChange={(value) => setExpenseForm((current) => ({ ...current, amount: value }))}
           onAdd={() => addEntry('expense')}
           onDelete={(id) => removeEntry('expense', id)}
-        />
+          onOpenGroup={(groupId) => { const group = data.chargeGroups.find((item) => item.id === groupId); setChargeFilter(group?.settlement_completed ? 'settlement_completed' : 'settlement_pending'); setGroupSearch(''); setFinanceView('charges'); setExpandedGroupId(groupId); }}
+        /> : null}
       </div>
       </div>
+      {settlementTarget ? <ResponsiveDialog title="정산 금액 확인" busy={isPending} onClose={() => setSettlementTarget(null)}>
+        <p className="text-sm text-slate-500">{data.chargeGroups.find((item) => item.id === settlementTarget.groupId)?.title}</p>
+        <SettlementBreakdown plannedSupport={data.chargeGroups.find((item) => item.id === settlementTarget.groupId)?.support_amount ?? 0}
+          paidTotal={data.chargeGroups.find((item) => item.id === settlementTarget.groupId)?.participant_paid_total ?? 0} actualCost={settlementTarget.actualCost} />
+        {message && toastTone === 'error' ? <p role="alert" className="mb-3 text-sm text-rose-700">{message}</p> : null}
+        <button type="button" disabled={isPending} onClick={confirmSettlement} className="min-h-11 w-full rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-40">{isPending ? '정산 중…' : '금액 확인 · 정산 완료'}</button>
+      </ResponsiveDialog> : null}
     </>
   );
 }
@@ -1190,6 +1158,7 @@ function CrudFinanceList({
   onAmountChange,
   onAdd,
   onDelete,
+  onOpenGroup,
 }: {
   title: string;
   kind: 'income' | 'expense';
@@ -1201,13 +1170,14 @@ function CrudFinanceList({
   onAmountChange: (value: string) => void;
   onAdd: () => void;
   onDelete: (id: string) => void;
+  onOpenGroup?: (id: string) => void;
 }) {
   return (
-    <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
+    <section className="workspace-section">
       <div className="flex items-end justify-between border-b border-slate-200/80 pb-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">{kind === 'income' ? 'Income' : 'Expense'}</p>
-          <h3 className="mt-2 text-xl font-black text-slate-900">{title}</h3>
+
+          <h2 className="workspace-section-title">{title}</h2>
         </div>
         <span className="text-sm font-semibold text-slate-500">합계 {formatCurrency(total)}</span>
       </div>
@@ -1231,7 +1201,7 @@ function CrudFinanceList({
           onClick={onAdd}
           className={`rounded-2xl px-4 py-3 text-sm font-bold text-white transition ${kind === 'income' ? 'bg-brand-600 hover:bg-brand-700' : 'bg-slate-900 hover:bg-slate-800'}`}
         >
-          추가
+          <span className="inline-flex items-center gap-1"><Plus className="h-4 w-4" />추가</span>
         </button>
       </div>
       <div className="mt-4 space-y-3">
@@ -1243,16 +1213,23 @@ function CrudFinanceList({
             </div>
             <div className="flex items-center gap-3">
               <span className="text-sm font-black text-slate-900">{formatCurrency(item.amount)}</span>
-              <button
-                onClick={() => onDelete(item.id)}
-                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 transition hover:text-rose-600"
-              >
-                삭제
-              </button>
+              {item.charge_group_id ? <button type="button" onClick={() => onOpenGroup?.(item.charge_group_id!)} className="inline-flex min-h-9 items-center gap-1 text-xs text-emerald-700">정산에서 확인<ArrowUpRight className="h-3 w-3" /></button>
+                : <button type="button" onClick={() => onDelete(item.id)} aria-label={`${item.label} 삭제`} title="삭제" className="flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>}
             </div>
           </div>
         )) : <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">{`등록된 ${kind === 'income' ? '세입' : '지출'}이 없습니다.`}</div>}
       </div>
     </section>
   );
+}
+
+function FinanceLedger({ data, fiscalYearId }: { data: DashboardBundle; fiscalYearId: string }) {
+  const entries = recentTransactions(data, fiscalYearId, true);
+  return <section className="workspace-section" aria-label="전체 재정 내역">
+    <div className="mb-3 flex items-center justify-between"><h2 className="workspace-section-title">전체 내역</h2><span className="text-xs text-slate-500">{entries.length}건</span></div>
+    <table className="w-full table-fixed border-collapse text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="w-16 px-2 py-3 text-left font-medium">기록일</th><th className="px-2 py-3 text-left font-medium">항목</th><th className="w-28 px-2 py-3 text-right font-medium">금액</th></tr></thead><tbody>
+      {entries.map((item) => <tr key={item.id}><td className="border-b border-slate-100 px-2 py-3 text-xs tabular-nums text-slate-500">{formatRecordedDate(item.recordedAt)}</td><td className="border-b border-slate-100 px-2 py-3"><span className="block break-words font-medium">{item.title}</span><span className="mt-1 block break-words text-xs text-slate-500">{item.description}</span></td><td className={`border-b border-slate-100 px-2 py-3 text-right text-xs font-semibold tabular-nums sm:text-sm ${item.direction === 'income' ? 'text-emerald-700' : 'text-slate-800'}`}>{item.direction === 'income' ? '+' : '−'}{formatCurrency(item.amount)}</td></tr>)}
+      {!entries.length ? <tr><td colSpan={3} className="py-8 text-center text-sm text-slate-500">등록된 내역이 없습니다.</td></tr> : null}
+    </tbody></table>
+  </section>;
 }

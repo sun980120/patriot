@@ -576,7 +576,7 @@ export async function settleAdditionalChargeSurplusAction(chargeGroupId: string,
   });
 
   if (!result.ok) {
-    return { ok: false, message: result.message ?? '잔액 세입 처리에 실패했습니다.' };
+    return { ok: false, message: result.message ?? '추가 비용 정산에 실패했습니다.' };
   }
 
   refreshHome();

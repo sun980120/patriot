@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const load = require('./load-typescript.cjs');
 const { summarizeFinance } = load('lib/finance-summary.ts');
+const { calculateChargeSettlement } = load('lib/charge-settlement.ts');
 const { mockBundle } = load('lib/mock-data.ts');
 
 const empty = () => ({ payments: [], incomes: [], expenses: [], chargeGroups: [] });
@@ -63,4 +64,17 @@ test('expenses across all years and a negative balance are supported', () => {
 test('empty and unknown fiscal years produce zero annual totals', () => {
   assert.equal(summarizeFinance(empty(), 'unknown').cumulative.balance, 0);
   assert.equal(summarizeFinance(mockBundle, 'unknown').annual.totalIncome, 0);
+});
+test('100000 spent and 60000 received reduce club funds by exactly 40000', () => {
+  const allocation = calculateChargeSettlement(200000, 60000, 100000);
+  const data = {
+    ...empty(),
+    chargeGroups: [{ fiscal_year_id: 'a', participant_paid_total: 60000 }],
+    incomes: [{ fiscal_year_id: 'a', charge_group_id: 'reference', amount: allocation.surplus }],
+    expenses: [{ fiscal_year_id: 'a', amount: allocation.appliedSupport }, { fiscal_year_id: 'a', amount: allocation.participantExpense }],
+  };
+  const result = summarizeFinance(data, 'a');
+  assert.equal(result.cumulative.totalIncome, 60000);
+  assert.equal(result.cumulative.totalExpense, 100000);
+  assert.equal(result.cumulative.balance, -40000);
 });

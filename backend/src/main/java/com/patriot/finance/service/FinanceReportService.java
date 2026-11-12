@@ -57,7 +57,8 @@ public class FinanceReportService {
         StringBuilder builder = new StringBuilder();
         builder.append('\ufeff');
         appendSummary(builder, report);
-        appendIncomeRows(builder, report.incomes());
+        appendIncomeRows(builder, report.manualIncomes(), "기타 세입");
+        appendIncomeRows(builder, report.referenceIncomes(), "정산 참고 금액(총세입 제외)");
         appendExpenseRows(builder, report.expenses());
         appendMonthlyPaymentRows(builder, report.fiscalYear(), report.members(), report.paymentsByMemberMonth());
         appendAdditionalChargeRows(builder, report.memberCharges());
@@ -81,7 +82,8 @@ public class FinanceReportService {
             moneyStyle.setDataFormat(dataFormat.getFormat("#,##0"));
 
             writeSummarySheet(workbook, headerStyle, moneyStyle, report);
-            writeIncomeSheet(workbook, headerStyle, moneyStyle, report.incomes());
+            writeIncomeSheet(workbook, headerStyle, moneyStyle, report.manualIncomes(), "기타 세입");
+            writeIncomeSheet(workbook, headerStyle, moneyStyle, report.referenceIncomes(), "정산 참고");
             writeExpenseSheet(workbook, headerStyle, moneyStyle, report.expenses());
             writeMonthlyPaymentSheet(workbook, headerStyle, moneyStyle, report);
             writeAdditionalChargeSheet(workbook, headerStyle, moneyStyle, report.memberCharges());
@@ -122,12 +124,14 @@ public class FinanceReportService {
         row(builder, "지출 합계", report.expenseTotal());
         row(builder, "추가 비용 납부 합계", report.additionalChargePaidTotal());
         row(builder, "추가 비용 미납 합계", report.additionalChargeUnpaidTotal());
-        row(builder, "기타 세입 - 지출", report.manualIncomeTotal() - report.expenseTotal());
+        row(builder, "총 세입", report.totalIncome());
+        row(builder, "연도 증감", report.totalIncome() - report.expenseTotal());
+        row(builder, "정산 참고 금액(총세입 제외)", report.referenceIncomes().stream().mapToInt(IncomeEntry::getAmount).sum());
         builder.append('\n');
     }
 
-    private void appendIncomeRows(StringBuilder builder, List<IncomeEntry> incomes) {
-        builder.append("기타 세입\n");
+    private void appendIncomeRows(StringBuilder builder, List<IncomeEntry> incomes, String title) {
+        builder.append(title).append('\n');
         builder.append("등록일,항목,금액,메모,추가비용이벤트ID\n");
         incomes.forEach(entry -> row(
             builder,
@@ -217,12 +221,14 @@ public class FinanceReportService {
         writeSheetRow(sheet, 5, moneyStyle, "지출 합계", report.expenseTotal());
         writeSheetRow(sheet, 6, moneyStyle, "추가 비용 납부 합계", report.additionalChargePaidTotal());
         writeSheetRow(sheet, 7, moneyStyle, "추가 비용 미납 합계", report.additionalChargeUnpaidTotal());
-        writeSheetRow(sheet, 8, moneyStyle, "기타 세입 - 지출", report.manualIncomeTotal() - report.expenseTotal());
+        writeSheetRow(sheet, 8, moneyStyle, "총 세입", report.totalIncome());
+        writeSheetRow(sheet, 9, moneyStyle, "연도 증감", report.totalIncome() - report.expenseTotal());
+        writeSheetRow(sheet, 10, moneyStyle, "정산 참고 금액(총세입 제외)", report.referenceIncomes().stream().mapToInt(IncomeEntry::getAmount).sum());
         setColumnWidths(sheet, 18, 18);
     }
 
-    private void writeIncomeSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, List<IncomeEntry> incomes) {
-        Sheet sheet = workbook.createSheet("기타 세입");
+    private void writeIncomeSheet(Workbook workbook, CellStyle headerStyle, CellStyle moneyStyle, List<IncomeEntry> incomes, String title) {
+        Sheet sheet = workbook.createSheet(title);
         writeHeader(sheet, headerStyle, "등록일", "항목", "금액", "메모", "추가비용이벤트ID");
         int rowIndex = 1;
         for (IncomeEntry entry : incomes) {
@@ -345,7 +351,19 @@ public class FinanceReportService {
         List<MemberCharge> memberCharges
     ) {
         int manualIncomeTotal() {
-            return incomes.stream().mapToInt(IncomeEntry::getAmount).sum();
+            return manualIncomes().stream().mapToInt(IncomeEntry::getAmount).sum();
+        }
+
+        List<IncomeEntry> manualIncomes() {
+            return incomes.stream().filter(entry -> entry.getChargeGroup() == null).toList();
+        }
+
+        List<IncomeEntry> referenceIncomes() {
+            return incomes.stream().filter(entry -> entry.getChargeGroup() != null).toList();
+        }
+
+        int totalIncome() {
+            return manualIncomeTotal() + monthlyDuesPaidTotal() + additionalChargePaidTotal();
         }
 
         int expenseTotal() {
@@ -389,6 +407,7 @@ public class FinanceReportService {
             return "";
         }
         String text = String.valueOf(value);
+        if (!(value instanceof Number) && text.matches("(?s)^\\s*[=+@-].*")) text = "'" + text;
         return "\"" + text.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\"";
     }
 }

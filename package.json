@@ -9,6 +9,7 @@
     "test:dues": "node --test tests/dues.test.cjs",
     "test:dashboard": "node --test tests/dashboard-overview.test.cjs",
     "test:finance": "node --test tests/finance-summary.test.cjs",
+    "test:settlement": "node --test tests/charge-settlement.test.cjs",
     "start": "next start",
     "lint": "next lint"
   },

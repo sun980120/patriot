@@ -59,11 +59,17 @@ public class FinanceService {
 
     @Transactional
     public void deleteIncome(UUID id) {
+        IncomeEntry entry = incomeEntryRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("세입 내역을 찾을 수 없습니다."));
+        if (entry.getChargeGroup() != null) throw new IllegalArgumentException("정산 연결 내역은 정산 수정에서 변경해 주세요.");
         incomeEntryRepository.deleteById(id);
     }
 
     @Transactional
     public void deleteExpense(UUID id) {
+        ExpenseEntry entry = expenseEntryRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("지출 내역을 찾을 수 없습니다."));
+        if (entry.getChargeGroup() != null) throw new IllegalArgumentException("정산 연결 내역은 정산 수정에서 변경해 주세요.");
         expenseEntryRepository.deleteById(id);
     }
 
