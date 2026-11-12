@@ -146,7 +146,7 @@ export function AdminDuesManagement(props: Props) {
 
   return <section aria-label="관리자 회비 관리" className="min-w-0 border-b border-slate-200 bg-white px-0 pb-6">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-xl font-bold text-slate-900">회비 관리</h2><p className="mt-1 text-xs text-slate-500">{year.year}년 · {months.map((value) => `${value}월`).join(' / ')}</p></div>
+      <div><h1 className="text-2xl font-bold text-slate-900">회비 관리</h1><p className="mt-1 text-xs text-slate-500">{year.year}년 · {months.map((value) => `${value}월`).join(' / ')}</p></div>
       <div className="flex items-center gap-2">
         <select value={year.id} onChange={(event) => onYearChange(event.target.value)} aria-label="회비 관리 연도 선택" className="min-h-10 rounded-md border border-slate-200 bg-white px-2 text-sm">
           {fiscalYears.map((item) => <option key={item.id} value={item.id}>{item.year}년</option>)}

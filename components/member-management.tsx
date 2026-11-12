@@ -1,7 +1,10 @@
 'use client';
 
+import { PageHeading } from '@/components/ui/page-heading';
+
 import type { ReactNode } from 'react';
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
+import { Check, KeyRound, ShieldCheck, Trash2, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   activateMemberAction,
@@ -20,6 +23,7 @@ import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
 export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; source: 'mock' | 'spring' }) {
   const router = useRouter();
   const [data, setData] = useState(bundle);
+  useEffect(() => setData(bundle), [bundle]);
   const [exemptionInputs, setExemptionInputs] = useState<Record<string, string>>({});
   const [pendingSearch, setPendingSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
@@ -77,7 +81,7 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
             item.month === month
         );
 
-        if (payment?.paid) {
+        if (payment?.paid || payment?.manual_exempt) {
           continue;
         }
 
@@ -351,14 +355,8 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
   return (
     <>
       <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
-      <div className="space-y-8">
-      <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Admin</p>
-          <h2 className="mt-2 text-3xl font-black text-slate-900">가입 회원 승인 및 비활성화</h2>
-          <p className="mt-2 text-sm text-slate-500">승인 대기 회원과 승인 후 비활성 회원을 분리해서 관리하는 전용 페이지입니다.</p>
-        </div>
-      </section>
+      <div className="workspace-page space-y-6" aria-busy={isPending}>
+      <PageHeading title="회원 관리" description={`활성 ${active.length}명 · 승인 대기 ${pending.length}명 · 비활성 ${inactive.length}명`} />
 
       <SectionCard
         title="승인 대기 회원"
@@ -368,6 +366,7 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       >
         {filteredPending.map((member) => (
           <MemberRow
+            disabled={isPending}
             key={member.id}
             name={member.full_name}
             username={member.username}
@@ -401,6 +400,7 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       >
         {filteredActive.map((member) => (
           <MemberRow
+            disabled={isPending}
             key={member.id}
             name={member.full_name}
             username={member.username}
@@ -463,6 +463,7 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       >
         {filteredInactive.map((member) => (
           <MemberRow
+            disabled={isPending}
             key={member.id}
             name={member.full_name}
             username={member.username}
@@ -524,9 +525,9 @@ function SectionCard({
 }) {
   const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
   return (
-    <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
+    <section className="workspace-section">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-xl font-black text-slate-900">{title}</h3>
+        <h2 className="workspace-section-title">{title}</h2>
         <input
           value={searchValue}
           onChange={(event) => onSearchChange(event.target.value)}
@@ -557,6 +558,7 @@ function MemberRow({
   details,
   extra,
   actions = [],
+  disabled = false,
 }: {
   name: string;
   username: string | null;
@@ -566,12 +568,13 @@ function MemberRow({
   details: Array<{ label: string; value: string }>;
   extra?: ReactNode;
   actions?: Array<{ label: string; onClick: () => void }>;
+  disabled?: boolean;
 }) {
   return (
-    <div className="h-full rounded-3xl border border-slate-200 bg-slate-50 p-4">
+    <div className="border-b border-slate-200 bg-white py-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
-          <p className="font-black text-slate-900">{name}</p>
+          <p className="break-words text-sm font-semibold text-slate-900">{name}{username ? <span className="ml-2 break-all text-xs font-normal text-slate-500">@{username}</span> : null}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${ROLE_META[role].badge}`}>{role}</span>
             <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
@@ -588,16 +591,16 @@ function MemberRow({
         </div>
 
         <div className="flex flex-wrap gap-2 lg:max-w-[420px] lg:justify-end">
-          {actions.map((action) => (
-            <button key={action.label} onClick={action.onClick} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800 sm:rounded-2xl sm:px-4 sm:text-sm">
-              {action.label}
-            </button>
-          ))}
+          {actions.map((action) => {
+            const Icon = action.label.includes('삭제') ? Trash2 : action.label.includes('비밀번호') ? KeyRound : action.label.includes('승인') ? Check : action.label.includes('간사') || action.label.includes('권한') ? ShieldCheck : UserRound;
+            const danger = action.label.includes('삭제') || action.label.includes('비활성');
+            return <button key={action.label} type="button" disabled={disabled} onClick={action.onClick} className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-semibold disabled:opacity-40 ${danger ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Icon className="h-4 w-4" />{action.label}</button>;
+          })}
         </div>
       </div>
 
       {details.length ? (
-        <div className="mt-4 space-y-1 text-sm leading-6 text-slate-500">
+        <div className="mt-3 grid gap-x-6 gap-y-1 text-xs leading-5 text-slate-500 sm:grid-cols-2">
           {details.map((detail) => (
             <p key={detail.label}>
               <span className="font-semibold text-slate-600">{detail.label}:</span> {detail.value}
@@ -606,7 +609,7 @@ function MemberRow({
         </div>
       ) : null}
 
-      {extra ? <div className="mt-4">{extra}</div> : null}
+      {extra ? <fieldset disabled={disabled} aria-label={`${name} 면제 설정`} className="mt-4 min-w-0">{extra}</fieldset> : null}
     </div>
   );
 }

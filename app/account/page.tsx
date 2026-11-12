@@ -11,7 +11,7 @@ export default async function AccountPage() {
   }
 
   return (
-    <AppShell profile={data.bundle.profile} title="내 정보">
+    <AppShell sampleData={data.source === 'mock'} profile={data.bundle.profile} title="내 정보">
       {data.bundle.profile ? <AccountSettingsCard profile={data.bundle.profile} /> : null}
     </AppShell>
   );

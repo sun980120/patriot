@@ -11,7 +11,7 @@ export default async function TacticsPage() {
   }
 
   return (
-    <AppShell profile={profileData.profile} title="전술 보드">
+    <AppShell sampleData={profileData.source === 'mock'} profile={profileData.profile} title="전술 보드">
       <TacticsEditor userName={profileData.profile.full_name} />
     </AppShell>
   );

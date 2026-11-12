@@ -15,7 +15,7 @@ export default async function NotificationsPage() {
   }
 
   return (
-    <AppShell
+    <AppShell sampleData={profileData.source === 'mock'}
         title="알림"
         profile={profileData.profile}
         initialNotificationUnreadCount={notificationData.unreadCount}

@@ -1,4 +1,7 @@
 'use client';
+
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { PageHeading } from '@/components/ui/page-heading';
 import { expandOccurrences, compareOccurrences, parseDateInput, formatDateRange, formatOccurrenceTime, occurrenceKey, toDateInput, type CalendarOccurrence } from '@/lib/calendar-occurrences';
 
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from 'react';
@@ -137,6 +140,15 @@ export function EventManagement({ events, canManage, initialDate }: { events: Cl
 
   const resetFormForDate = (date: string) => {
     setForm({ ...emptyForm, startDate: date, endDate: date });
+  };
+
+  const addSchedule = () => {
+    const visibleMonth = toDateInput(monthCursor).slice(0, 7);
+    const date = renderSelectedDatePanel || selectedDate.startsWith(visibleMonth) ? selectedDate : toDateInput(monthCursor);
+    setSelectedDate(date);
+    resetFormForDate(date);
+    setShowScheduleForm(true);
+    openSelectedDatePanel();
   };
 
   useEffect(() => {
@@ -322,22 +334,14 @@ export function EventManagement({ events, canManage, initialDate }: { events: Cl
   return (
     <>
       <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
-      <div className="space-y-8">
-        <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Calendar</p>
-              <h2 className="mt-2 text-3xl font-black text-slate-900">캘린더</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                {canManage ? '일정을 등록하고 월간 캘린더에서 확인합니다.' : '동호회 일정을 월간 캘린더에서 확인합니다.'}
-              </p>
-            </div>
-          </div>
+      <div className="workspace-page">
+        <section className="workspace-section">
+          <PageHeading title="캘린더" actions={canManage ? <button type="button" onClick={addSchedule} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white"><Plus className="h-4 w-4" />일정 추가</button> : undefined} />
 
           <div className="mt-3 flex items-center justify-center gap-4">
-            <button type="button" onClick={() => moveMonth(-1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">이전</button>
+            <button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달" title="이전 달" className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-600"><ChevronLeft className="h-4 w-4" /></button>
             <span className="min-w-36 text-center text-lg font-black text-slate-900">{monthCursor.getFullYear()}년 {monthCursor.getMonth() + 1}월</span>
-            <button type="button" onClick={() => moveMonth(1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">다음</button>
+            <button type="button" onClick={() => moveMonth(1)} aria-label="다음 달" title="다음 달" className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-600"><ChevronRight className="h-4 w-4" /></button>
           </div>
 
           <div
@@ -498,7 +502,7 @@ function ScheduleDetailPanel({
   if (!occurrence) {
     return (
       <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-4 text-sm font-semibold text-slate-500">
-        캘린더의 일정명을 클릭하면 상세 내용을 확인할 수 있습니다.
+        선택한 일정이 없습니다.
       </section>
     );
   }

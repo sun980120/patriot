@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { EventManagement } from '@/components/event-management';
 import { AppShell } from '@/components/app-shell';
+import { PageHeading } from '@/components/ui/page-heading';
 import { validCalendarDate } from '@/lib/calendar-occurrences';
 import { loadClubEvents } from '@/lib/event-data';
 import { loadCurrentProfile } from '@/lib/profile-data';
@@ -21,12 +22,13 @@ export default async function CalendarPage({ searchParams }: { searchParams?: Pr
   const initialDate = validCalendarDate((await searchParams)?.date);
 
   return (
-    <AppShell profile={profileData.profile} title="캘린더">
+    <AppShell sampleData={profileData.source === 'mock'} profile={profileData.profile} title="캘린더">
       {eventResult.ok ? (
         <EventManagement key={initialDate ?? 'calendar'} events={eventResult.events} canManage={canManage} initialDate={initialDate} />
       ) : (
-        <section className="rounded-[28px] border border-rose-200 bg-white/90 p-6 shadow-soft">
-          <p className="text-sm font-black text-rose-600">일정 목록을 불러오지 못했습니다.</p>
+        <section>
+          <PageHeading title="캘린더" />
+          <p role="alert" className="text-sm font-medium text-rose-700">일정 목록을 불러오지 못했습니다.</p>
           <p className="mt-2 text-sm text-slate-600">{eventResult.message}</p>
         </section>
       )}

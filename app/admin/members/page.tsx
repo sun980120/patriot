@@ -12,7 +12,7 @@ export default async function AdminMembersPage() {
   }
 
   return (
-    <AppShell profile={data.bundle.profile} title="회원 관리">
+    <AppShell sampleData={data.source === 'mock'} profile={data.bundle.profile} title="회원 관리">
       {!['admin', 'super_admin'].includes(data.bundle.profile?.app_role ?? '') ? <AccessDenied /> : <MemberManagement bundle={data.bundle} source={data.source} />}
     </AppShell>
   );

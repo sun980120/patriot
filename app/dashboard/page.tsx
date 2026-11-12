@@ -20,7 +20,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: P
   const filter = first(params?.status) === 'due' ? 'due' : arrears ? 'all' : undefined;
   const exemptionFilter = first(params?.status) === 'exempt';
   const memberId = first(params?.member);
-  return <AppShell profile={data.bundle.profile} title={view === 'dues' ? '회비 관리' : '대시보드'}>
+  return <AppShell sampleData={data.source === 'mock'} profile={data.bundle.profile} title={view === 'dues' ? '회비 관리' : '대시보드'}>
     <ClubDashboard initialData={data.bundle} source={data.source} events={events.ok ? events.events : null} view={view} initialYearId={yearId} initialDuesMonth={month >= 1 && month <= 12 ? month : undefined} initialDuesFilter={exemptionFilter ? 'exempt' : filter} initialMemberId={memberId} initialArrears={arrears} />
   </AppShell>;
 }
