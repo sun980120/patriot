@@ -151,10 +151,59 @@ class BulkPaymentServiceTest {
     }
 
     @Test
-    void rejectsFuturePeriod() {
+    void acceptsFuturePeriodAsAdvancePayment() {
         ReflectionTestUtils.setField(year, "year", Year.now(ZoneId.of("Asia/Seoul")).getValue() + 1);
-        assertThatThrownBy(() -> service.markBulkPaid(request(6, member))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("예정");
-        verifyNoInteractions(memberRepository, paymentRepository);
+        prepare(List.of(member), List.of());
+        var result = service.markBulkPaid(request(6, member));
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().paid()).isTrue();
+        assertThat(result.getFirst().chargedAmount()).isEqualTo(20_000);
+        verify(paymentRepository).saveAllAndFlush(any());
+        verify(auditLogService).record(eq("MONTHLY_PAYMENT_MARKED_PAID"), anyString(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void acceptsSingleAdvancePayment() {
+        ReflectionTestUtils.setField(year, "year", Year.now(ZoneId.of("Asia/Seoul")).getValue() + 1);
+        when(memberRepository.findForPaymentUpdate(List.of(member.getId()))).thenReturn(List.of(member));
+        when(paymentRepository.findByFiscalYearIdAndMemberIdAndMonth(year.getId(), member.getId(), 6)).thenReturn(Optional.empty());
+        when(paymentRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var result = service.toggle(new TogglePaymentRequest(year.getId(), member.getId(), 6, false));
+        assertThat(result.paid()).isTrue();
+        assertThat(result.chargedAmount()).isEqualTo(20_000);
+    }
+
+    @Test
+    void rejectsSingleAdvancePaymentBeforeJoining() {
+        ReflectionTestUtils.setField(year, "year", Year.now(ZoneId.of("Asia/Seoul")).getValue() + 1);
+        ReflectionTestUtils.setField(member, "joinedAt", LocalDateTime.of(year.getYear(), 7, 1, 0, 0));
+        when(memberRepository.findForPaymentUpdate(List.of(member.getId()))).thenReturn(List.of(member));
+        when(paymentRepository.findByFiscalYearIdAndMemberIdAndMonth(year.getId(), member.getId(), 6)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.toggle(new TogglePaymentRequest(year.getId(), member.getId(), 6, false)))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("가입 전");
+        verify(paymentRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void rejectsAutomaticExemptionEvenForAdvancePayment() {
+        ReflectionTestUtils.setField(year, "year", Year.now(ZoneId.of("Asia/Seoul")).getValue() + 1);
+        ReflectionTestUtils.setField(member, "feeExemptionMonths", 1);
+        ReflectionTestUtils.setField(member, "feeExemptionStartDate", java.time.LocalDate.of(year.getYear(), 5, 1));
+        prepare(List.of(member), List.of());
+        assertThatThrownBy(() -> service.markBulkPaid(request(5, member)))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("면제");
+        verify(paymentRepository, never()).saveAllAndFlush(any());
+    }
+
+    @Test
+    void repeatedAdvancePaymentPreservesHistoricalAmount() {
+        ReflectionTestUtils.setField(year, "year", Year.now(ZoneId.of("Asia/Seoul")).getValue() + 1);
+        MembershipPayment paid = payment(member, 6, true);
+        paid.toggle(true, 10_000, MemberGrade.준회원);
+        prepare(List.of(member), List.of(paid));
+        var result = service.markBulkPaid(request(6, member));
+        assertThat(result.getFirst().chargedAmount()).isEqualTo(10_000);
+        verifyNoInteractions(auditLogService);
     }
 
     private Member member(MemberGrade grade) {

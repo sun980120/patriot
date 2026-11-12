@@ -14,7 +14,6 @@ import com.patriot.finance.repository.MemberRepository;
 import com.patriot.finance.repository.MembershipPaymentRepository;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.function.Function;
@@ -46,6 +45,9 @@ public class PaymentService {
     public PaymentResponse toggle(TogglePaymentRequest request) {
         FiscalYear fiscalYear = fiscalYearRepository.findById(request.fiscalYearId())
             .orElseThrow(() -> new IllegalArgumentException("연도를 찾을 수 없습니다."));
+        if (!fiscalYear.getVisibleMonths().contains(request.month())) {
+            throw new IllegalArgumentException("해당 연도의 회비 관리 대상 월이 아닙니다.");
+        }
         Member member = paymentMember(request.memberId());
 
         MembershipPayment payment = paymentRepository.findByFiscalYearIdAndMemberIdAndMonth(
@@ -64,6 +66,11 @@ public class PaymentService {
         }
         if (payment.isManualExempt()) {
             throw new IllegalArgumentException("수동 면제 처리된 달은 납부 처리할 수 없습니다.");
+        }
+
+        if (!payment.isPaid() && member.getJoinedAt() != null
+            && YearMonth.of(fiscalYear.getYear(), request.month()).isBefore(YearMonth.from(member.getJoinedAt()))) {
+            throw new IllegalArgumentException("가입 전 회비는 납부 처리할 수 없습니다.");
         }
 
         if (isFeeExempt(member, fiscalYear.getYear(), request.month())) {
@@ -131,9 +138,6 @@ public class PaymentService {
             throw new IllegalArgumentException("해당 연도의 회비 관리 대상 월이 아닙니다.");
         }
         YearMonth period = YearMonth.of(year.getYear(), request.month());
-        if (period.isAfter(YearMonth.now(ZoneId.of("Asia/Seoul")))) {
-            throw new IllegalArgumentException("예정된 월은 일괄 납부 처리할 수 없습니다.");
-        }
 
         // All payment writers lock members in the same order, including missing payment rows.
         List<Member> members = memberRepository.findForPaymentUpdate(request.memberIds());
