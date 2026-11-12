@@ -6,6 +6,7 @@ import { ArrowUpRight, CheckCircle2, ChevronDown, Download, ReceiptText, Search,
 import { dashboardSnapshot, formatDuesPeriods, formatRecordedDate, groupExemptions, recentTransactions, upcomingOccurrences, type DuesPeriod } from '@/lib/dashboard-overview';
 import { formatOccurrenceTime, parseDateInput } from '@/lib/calendar-occurrences';
 import { formatCurrency } from '@/lib/utils';
+import { ClubFinanceOverview } from '@/components/club-finance-overview';
 import type { FinanceSummary } from '@/lib/finance-summary';
 import type { ClubEvent, DashboardBundle, FiscalYear, Profile } from '@/lib/types';
 
@@ -89,12 +90,20 @@ export function DashboardOverview(props: Props) {
         </div>
       </div>
     </> : <>
-      <section aria-label="확인할 납부 내역" className={`border-l-[3px] py-1 pl-4 ${!today ? 'border-slate-200' : unpaidAmount + additionalAmount ? 'border-rose-600' : 'border-emerald-600'}`}><p className="text-sm text-slate-500">확인할 납부 내역</p><p className={`mt-2 text-3xl font-semibold tabular-nums ${unpaidAmount + additionalAmount ? 'text-slate-900' : 'text-emerald-700'}`}>{today ? formatCurrency(unpaidAmount + additionalAmount) : '—'}</p><p className="mt-2 text-xs text-slate-500">{today ? `미납 회비 ${formatCurrency(unpaidAmount)} + 추가 비용 ${formatCurrency(additionalAmount)}` : '납부 현황 확인 중...'}</p></section>
+      {!today ? <Empty>납부 현황 확인 중...</Empty> : null}
+      {snapshot.hasOutstanding ? <section aria-label="확인할 납부 내역" className="space-y-4">
+        <div className="border-l-[3px] border-rose-600 py-1 pl-4"><h2 className="text-sm font-normal text-slate-500">확인할 납부 내역</h2><p className="mt-2 text-3xl font-semibold tabular-nums">{formatCurrency(unpaidAmount + additionalAmount)}</p><p className="mt-2 text-xs text-slate-500">미납 회비 {formatCurrency(unpaidAmount)} + 추가 비용 {formatCurrency(additionalAmount)}</p></div>
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+          {ownRow?.unpaid.length ? <PaymentSummary icon={<Wallet className="h-5 w-5" />} title={`미납 회비 · ${ownRow.unpaid.length}개월`} description={formatDuesPeriods(ownRow.unpaid)} value={unpaidAmount} href={ownHref} alert /> : null}
+          {additional.length ? <PaymentSummary icon={<ReceiptText className="h-5 w-5" />} title={`추가 비용 · ${additional.length}건`} description={additional.map(item => item.group.title).join(' · ')} value={additionalAmount} href="/dashboard?view=dues#additional-charges" /> : null}
+        </div>
+      </section> : null}
       <div className="grid min-w-0 items-start gap-7 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <div className="min-w-0 space-y-3"><PaymentSummary icon={<Wallet className="h-5 w-5" />} title={`미납 회비 · ${ownRow?.unpaid.length ?? 0}개월`} description={ownRow?.unpaid.length ? formatDuesPeriods(ownRow.unpaid) : '미납된 회비가 없습니다.'} value={today ? unpaidAmount : null} href={ownHref} alert={unpaidAmount > 0} /><PaymentSummary icon={<ReceiptText className="h-5 w-5" />} title={`추가 비용 · ${additional.length}건`} description={additional.length ? additional.map(item => item.group.title).join(' · ') : '미납된 추가 비용이 없습니다.'} value={additionalAmount} href="/dashboard?view=dues#additional-charges" /><section aria-label="올해 나의 회비" className="pt-3"><SectionHeading title={`${year.year}년 나의 회비`} /><FinanceLine label={`납부 완료 · ${snapshot.ownPaidCount}개월`} value={snapshot.ownPaidAmount} /><div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500"><CheckCircle2 className="h-4 w-4 text-emerald-700" />{data.profile?.member_grade} · 실제 납부 기록 기준</div></section></div>
-        <div className="min-w-0 space-y-6">{upcoming}<section aria-label="클럽 재정"><SectionHeading title="클럽 재정" /><FinanceLine label="누적 잔액 · 전체 기간" value={summary.cumulative.balance} emphasized /><div className="mt-4 border-t border-slate-100 pt-4">{reconciliation}</div></section></div>
+        <ClubFinanceOverview key={year.id} bundle={data} year={year} summary={summary} />
+        <div className="min-w-0 space-y-6">{upcoming}<section aria-label="올해 나의 회비"><SectionHeading title={`${year.year}년 나의 회비`} /><FinanceLine label={`납부 완료 · ${snapshot.ownPaidCount}개월`} value={snapshot.ownPaidAmount} /><div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500"><CheckCircle2 className="h-4 w-4 text-emerald-700" />{data.profile?.member_grade} · 실제 납부 기록 기준</div></section></div>
       </div>
     </>}
+    {admin ? <div className="border-t border-slate-200 pt-5"><ClubFinanceOverview key={year.id} bundle={data} year={year} summary={summary} showSummary={false} /></div> : null}
     <div className="grid min-w-0 gap-4 border-t border-slate-200 pt-4 lg:grid-cols-2">
       {admin ? <details className="group min-w-0"><summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold">재정 집계 내역<ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180" /></summary><div className="space-y-3 py-3"><FinanceLine label="누적 세입 · 전체 기간" value={summary.cumulative.totalIncome} /><FinanceLine label="누적 지출 · 전체 기간" value={summary.cumulative.totalExpense} /><FinanceLine label="누적 잔액 · 세입 − 지출" value={summary.cumulative.balance} emphasized /><div className="border-t border-slate-100 pt-3">{reconciliation}</div></div></details> : null}
       <details className="group min-w-0" aria-label={admin ? '면제 현황' : '나의 면제 내역'}><summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-sm font-semibold"><span>{admin ? `면제 현황 · ${exemptRows.length}명` : '나의 면제 내역'}<span className="ml-2 text-xs font-normal text-slate-500">전체 기간</span></span><ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180" /></summary><ExemptionDetails rows={exemptRows} admin={admin} today={today} /></details>

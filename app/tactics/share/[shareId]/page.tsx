@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import type { Route } from 'next';
 import { notFound } from 'next/navigation';
+import { ArrowLeft, ArrowUpRight } from 'lucide-react';
+import { AppShell } from '@/components/app-shell';
 import { TacticShareViewer } from '@/components/tactics/tactic-share-viewer';
 import { publicApiFetch } from '@/lib/backend-api';
-import { CLUB_NAME } from '@/lib/constants';
+import { loadCurrentProfile } from '@/lib/profile-data';
 import { isTacticProject, type TacticProject } from '@/lib/tactics';
 
 type TacticShareApiResponse = {
@@ -18,43 +19,35 @@ type TacticShareApiResponse = {
 
 export default async function TacticSharePage({ params }: { params: Promise<{ shareId: string }> }) {
   const { shareId } = await params;
-  const result = await publicApiFetch<TacticShareApiResponse>(
-    `/api/tactics/shares/${encodeURIComponent(shareId)}`,
-  );
+  const [profileData, result] = await Promise.all([
+    loadCurrentProfile(),
+    publicApiFetch<TacticShareApiResponse>(`/api/tactics/shares/${encodeURIComponent(shareId)}`),
+  ]);
 
-  if (!result.ok || !result.data || !isTacticProject(result.data.snapshot)) {
+  if (!result.ok || !result.data || !result.data.active || !isTacticProject(result.data.snapshot)) {
     notFound();
   }
 
-  return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-8 rounded-[28px] border border-white/70 bg-white/90 px-5 py-4 shadow-soft backdrop-blur">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-700">
-              Patriot Club Finance
-            </p>
-            <h1 className="mt-1 text-xl font-black text-slate-900">
-              {CLUB_NAME} 공유 전술 보드
-            </h1>
-          </div>
-          <nav className="flex flex-wrap gap-2 text-sm">
-            <Link
-              href={'/tactics/community' as Route}
-              className="rounded-full bg-slate-100 px-4 py-2 font-semibold text-slate-700 transition hover:bg-brand-100 hover:text-brand-800"
-            >
-              공유 게시판
-            </Link>
-            <Link
-              href={'/tactics' as Route}
-              className="rounded-full bg-brand-700 px-4 py-2 font-semibold text-white transition hover:bg-brand-800"
-            >
-              내 전술 보드
-            </Link>
-          </nav>
-        </div>
-      </header>
-      <TacticShareViewer project={result.data.snapshot} />
-    </main>
-  );
+  const share = result.data;
+  const recordedAt = /(?:Z|[+-]\d\d:?\d\d)$/.test(share.createdAt) ? share.createdAt : `${share.createdAt}+09:00`;
+  const date = new Date(recordedAt);
+  const dateLabel = Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric',
+  }).format(date);
+  const content = <section className="workspace-page min-w-0">
+    <Link href="/tactics/community" className="mb-5 inline-flex min-h-9 items-center gap-1 text-xs text-slate-500 hover:text-emerald-800"><ArrowLeft className="h-4 w-4" />전술 공유 게시판</Link>
+    <TacticShareViewer key={shareId} project={share.snapshot} description={[`작성자 ${share.authorName || '미상'}`, dateLabel].filter(Boolean).join(' · ')} />
+  </section>;
+
+  if (profileData.mode === 'app') {
+    return <AppShell sampleData={profileData.source === 'mock'} profile={profileData.profile} title="공유 전술 상세">{content}</AppShell>;
+  }
+
+  return <div className="min-h-dvh bg-white text-slate-900">
+    <header className="border-b border-slate-200"><div className="mx-auto flex min-h-[76px] max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+      <Link href="/" aria-label="패트리어트 홈" className="flex items-center gap-2"><img src="/icon-192.png" alt="" className="h-10 w-10 object-contain" /><span><strong className="block text-sm font-bold">PATRIOT</strong><span className="text-xs text-slate-500">Floorball Club</span></span></Link>
+      <Link href="/login" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-emerald-800">로그인<ArrowUpRight className="h-4 w-4" /></Link>
+    </div></header>
+    <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{content}</main>
+  </div>;
 }
