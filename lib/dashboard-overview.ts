@@ -48,6 +48,45 @@ export function groupExemptions(periods: DuesPeriod[]) {
 
 export type RecentTransaction = { id: string; title: string; description: string; amount: number; direction: 'income' | 'expense'; recordedAt: string | null };
 
+export function dashboardSnapshot(bundle: DashboardBundle, year: FiscalYear, members: Profile[], admin: boolean, today: Date | null) {
+  const people = admin ? members : members.filter(member => member.id === bundle.profile?.id);
+  const rows = overviewDuesRows(people, bundle.fiscalYears, bundle.payments, today);
+  const debtors = rows.filter(row => row.unpaid.length > 0);
+  const periods = debtors.flatMap(row => row.unpaid).sort((a, b) => a.year - b.year || a.month - b.month);
+  const current = today ? koreanYearMonth(today) : null;
+  const months = [...year.visible_months].sort((a, b) => a - b);
+  const month = (current && year.year === current.year
+    ? months.filter(value => value <= current.month).at(-1) ?? months[0]
+    : current && year.year < current.year ? months.at(-1) : months[0]) ?? 1;
+  const monthly = months.length ? people.map(member => {
+    const history = bundle.payments.filter(payment => payment.member_id === member.id);
+    const payment = history.find(item => item.fiscal_year_id === year.id && item.month === month);
+    const status = getDuesStatus(member, year, month, payment, bundle.fiscalYears, history, today);
+    return { member, status, exemption: getDuesExemption(member, payment, status) };
+  }) : [];
+  const paid = monthly.filter(item => item.status === 'paid').length;
+  const due = monthly.filter(item => item.status === 'due');
+  const future = monthly.filter(item => item.status === 'future').length;
+  const exemptions = monthly.filter(item => item.status === 'exempt');
+  const target = paid + due.length + future;
+  const ids = new Set(people.map(member => member.id));
+  const additional = bundle.chargeGroups.flatMap(group => group.participant_charges
+    .filter(charge => charge.status === 'UNPAID' && ids.has(charge.member_id))
+    .map(charge => ({ charge, group })));
+  const readyGroups = admin ? bundle.chargeGroups.filter(group => !group.settlement_completed
+    && group.participant_charges.length > 0 && group.participant_charges.every(charge => charge.status === 'PAID')) : [];
+  const ownPayments = bundle.payments.filter(payment => payment.member_id === bundle.profile?.id
+    && payment.fiscal_year_id === year.id && payment.paid && year.visible_months.includes(payment.month));
+  return {
+    rows, debtors, firstDue: periods[0], lastDue: periods.at(-1),
+    unpaidAmount: debtors.reduce((sum, row) => sum + row.dueAmount, 0), unpaidMonths: periods.length,
+    month, monthly: { paid, due: due.length, dueAmount: due.reduce((sum, item) => sum + duesAmount(item.member), 0), future, exemptions, target, rate: target ? paid / target * 100 : null },
+    additional, additionalAmount: additional.reduce((sum, item) => sum + item.charge.amount, 0), readyGroups,
+    ownRow: rows.find(row => row.member.id === bundle.profile?.id), ownPaidCount: ownPayments.length,
+    ownPaidAmount: ownPayments.reduce((sum, payment) => sum + payment.charged_amount, 0),
+  };
+}
+
 function recordedTimestamp(value: string | null) {
   if (!value) return null;
   const normalized = /(?:Z|[+-]\d\d:?\d\d)$/.test(value) ? value : `${value}+09:00`;
@@ -62,26 +101,28 @@ export function formatRecordedDate(value: string | null) {
   return `${parts.find((part) => part.type === 'month')!.value}.${parts.find((part) => part.type === 'day')!.value}`;
 }
 
-export function recentTransactions(bundle: DashboardBundle, fiscalYearId: string, admin: boolean): RecentTransaction[] {
+export function recentTransactions(bundle: DashboardBundle, fiscalYearId: string, admin: boolean, personalOnly = false): RecentTransaction[] {
   const rows: RecentTransaction[] = [];
   const names = new Map(bundle.profiles.map((profile) => [profile.id, profile.full_name]));
   for (const payment of bundle.payments) {
     if (payment.fiscal_year_id !== fiscalYearId || !payment.paid || payment.charged_amount <= 0) continue;
-    if (!admin && payment.member_id !== bundle.profile?.id) continue;
+    if ((!admin || personalOnly) && payment.member_id !== bundle.profile?.id) continue;
     rows.push({ id: `payment-${payment.id}`, title: `${payment.month}월 회비`, description: `${names.get(payment.member_id) ?? '회원'} · 납부 처리`, amount: payment.charged_amount, direction: 'income', recordedAt: payment.updated_at ?? null });
   }
   for (const income of bundle.incomes) {
+    if (personalOnly) continue;
     if (income.fiscal_year_id !== fiscalYearId || income.charge_group_id) continue;
     rows.push({ id: `income-${income.id}`, title: income.label, description: '기타 세입', amount: income.amount, direction: 'income', recordedAt: income.created_at ?? null });
   }
   for (const expense of bundle.expenses) {
+    if (personalOnly) continue;
     if (expense.fiscal_year_id !== fiscalYearId) continue;
     rows.push({ id: `expense-${expense.id}`, title: expense.label, description: '지출', amount: expense.amount, direction: 'expense', recordedAt: expense.created_at ?? null });
   }
   for (const group of bundle.chargeGroups) {
     if (group.fiscal_year_id !== fiscalYearId) continue;
     for (const charge of group.participant_charges) {
-      if (charge.status !== 'PAID' || (!admin && charge.member_id !== bundle.profile?.id)) continue;
+      if (charge.status !== 'PAID' || ((!admin || personalOnly) && charge.member_id !== bundle.profile?.id)) continue;
       rows.push({ id: `charge-${charge.id}`, title: group.title, description: `${charge.member_name} · 추가 비용`, amount: charge.amount, direction: 'income', recordedAt: charge.paid_at });
     }
   }

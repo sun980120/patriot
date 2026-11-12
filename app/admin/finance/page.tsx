@@ -12,7 +12,7 @@ export default async function AdminFinancePage({ searchParams }: { searchParams?
   }
   const params = await searchParams;
   const requestedYear = params?.year;
-  const initialView = params?.tab === 'charges' || params?.tab === 'income' || params?.tab === 'expense' ? params.tab : 'ledger';
+  const initialView = params?.tab === 'income' || params?.tab === 'expense' ? params.tab : 'charges';
   const bundle = { ...data.bundle, selectedYear: data.bundle.fiscalYears.find((year) => year.id === requestedYear) ?? data.bundle.selectedYear };
 
   return (

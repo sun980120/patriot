@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const load = require('./load-typescript.cjs');
-const { formatDuesPeriods, formatRecordedDate, groupExemptions, overviewDuesRows, recentTransactions, upcomingOccurrences } = load('lib/dashboard-overview.ts');
+const { dashboardSnapshot, formatDuesPeriods, formatRecordedDate, groupExemptions, overviewDuesRows, recentTransactions, upcomingOccurrences } = load('lib/dashboard-overview.ts');
 const { formatOccurrenceTime, validCalendarDate } = load('lib/calendar-occurrences.ts');
 const { buildNavLinks } = load('lib/navigation.ts');
 
@@ -134,4 +134,71 @@ test('navigation preserves role restrictions and exposes dues management', () =>
   assert.equal(ordinary.some((link) => link.href === '/dashboard?view=dues'), true);
   assert.equal(buildNavLinks({ app_role: 'admin' }).some((link) => link.href === '/admin/members'), true);
   assert.equal(buildNavLinks(null).length, 2);
+});
+
+const snapshotBundle = (patch = {}) => ({ profile: member, fiscalYears: [year], profiles: [member], payments: [], chargeGroups: [], ...patch });
+test('monthly collection and all-period arrears have different scopes', () => {
+  const data = snapshotBundle({ payments: [{ fiscal_year_id: year.id, member_id: member.id, month: 11, paid: true, charged_amount: 20000 }] });
+  const result = dashboardSnapshot(data, year, [member], true, now);
+  assert.equal(result.month, 11);
+  assert.equal(result.monthly.paid, 1);
+  assert.equal(result.monthly.due, 0);
+  assert.equal(result.monthly.rate, 100);
+  assert.equal(result.unpaidAmount, 120000);
+  assert.equal(result.firstDue.month, 5);
+  assert.equal(result.lastDue.month, 10);
+});
+test('monthly target excludes exemptions and before-joining periods', () => {
+  const people = [member, { ...member, id:'junior', member_grade:'준회원' }, { ...member, id:'staff', member_grade:'간사' }, { ...member, id:'later', joined_at:'2026-12-01' }];
+  const result = dashboardSnapshot(snapshotBundle(), year, people, true, now);
+  assert.equal(result.monthly.target, 2);
+  assert.equal(result.monthly.dueAmount, 30000);
+  assert.equal(result.monthly.exemptions.length, 1);
+});
+test('member dashboard scopes both dues and additional charges to the signed-in member', () => {
+  const data = snapshotBundle({ chargeGroups: [{ id:'group', participant_charges:[{ member_id:'one', status:'UNPAID', amount:30000 }, { member_id:'two', status:'UNPAID', amount:50000 }] }] });
+  const result = dashboardSnapshot(data, year, [member, { ...member, id:'two' }], false, now);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.additional.length, 1);
+  assert.equal(result.additionalAmount, 30000);
+  assert.equal(result.unpaidAmount, 140000);
+});
+test('future year uses its first configured month for advance-payment progress', () => {
+  const next = { ...year, id:'next', year:2027, visible_months:[3,1,2] };
+  const data = snapshotBundle({ fiscalYears:[year,next], payments:[{ member_id:'one', fiscal_year_id:'next', month:1, paid:true, charged_amount:12000 }] });
+  const result = dashboardSnapshot(data,next,[member],true,now);
+  assert.equal(result.month,1);
+  assert.equal(result.monthly.rate,100);
+  assert.equal(result.unpaidAmount,140000);
+  assert.equal(result.ownPaidAmount,12000);
+});
+test('own annual paid totals include future advance payments and historical amounts', () => {
+  const data = snapshotBundle({ payments:[{ member_id:'one', fiscal_year_id:year.id, month:12, paid:true, charged_amount:10000 }, { member_id:'two', fiscal_year_id:year.id, month:12, paid:true, charged_amount:20000 }] });
+  const result = dashboardSnapshot(data,year,[member],false,now);
+  assert.equal(result.ownPaidCount,1);
+  assert.equal(result.ownPaidAmount,10000);
+  assert.equal(result.unpaidMonths,7);
+});
+test('settlement tasks require unpaid settlement state and at least one fully paid participant', () => {
+  const data = snapshotBundle({ chargeGroups:[
+    { id:'ready', settlement_completed:false, participant_charges:[{ status:'PAID' }] },
+    { id:'empty', settlement_completed:false, participant_charges:[] },
+    { id:'unpaid', settlement_completed:false, participant_charges:[{ status:'UNPAID' }] },
+    { id:'done', settlement_completed:true, participant_charges:[{ status:'PAID' }] },
+  ] });
+  assert.equal(dashboardSnapshot(data,year,[member],true,now).readyGroups.map(g=>g.id).join(','),'ready');
+  assert.equal(dashboardSnapshot(data,year,[member],false,now).readyGroups.length,0);
+});
+test('personal recent activity does not include club ledger or other members receipts', () => {
+  const rows = recentTransactions(bundle,'year',false,true);
+  assert.equal(rows.map(item=>item.id).sort().join(','),'charge-charge,payment-p1');
+});
+test('empty and hydrating dashboards do not invent overdue amounts', () => {
+  const data = snapshotBundle();
+  const hydrating = dashboardSnapshot(data,year,[member],true,null);
+  assert.equal(hydrating.unpaidAmount,0);
+  assert.equal(hydrating.firstDue,undefined);
+  const empty = dashboardSnapshot(data,{ ...year, visible_months:[] },[],true,now);
+  assert.equal(empty.monthly.target,0);
+  assert.equal(empty.monthly.rate,null);
 });

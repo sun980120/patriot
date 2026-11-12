@@ -6,6 +6,10 @@ export const DUES_STATUS_LABELS: Record<DuesStatus, string> = {
   paid: '납부 완료', due: '미납', exempt: '면제', future: '예정', before: '가입 전',
 };
 
+export function isDuesPayable(status: DuesStatus) {
+  return status === 'due' || status === 'future';
+}
+
 export function koreanYearMonth(date: Date) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'numeric' }).formatToParts(date);
   return { year: Number(parts.find((part) => part.type === 'year')!.value), month: Number(parts.find((part) => part.type === 'month')!.value) };

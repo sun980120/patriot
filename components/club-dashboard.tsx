@@ -13,7 +13,7 @@ import { MemberDuesHistory } from '@/components/member-dues-history';
 import { MemberAdditionalCharges } from '@/components/member-additional-charges';
 import { summarizeFinance } from '@/lib/finance-summary';
 import { ResponsiveDialog } from '@/components/ui/responsive-dialog';
-import { duesAmount, getDuesExemption, getDuesStatus, isFeeExempt } from '@/lib/dues';
+import { DUES_STATUS_LABELS, duesAmount, getDuesExemption, getDuesStatus, isDuesPayable, isFeeExempt, koreanYearMonth } from '@/lib/dues';
 import { DuesExemptionNote } from '@/components/dues-exemption-note';
 import { Bell, Check, Copy, Info, Landmark } from 'lucide-react';
 
@@ -311,10 +311,10 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
   };
 
   const handleTogglePaid = async (member: Profile, month: number) => {
-    if (paymentMutation.current || !adminMode || member.member_grade === '간사' || !selectedYear) return false;
+    if (paymentMutation.current || !adminMode || member.member_grade === '간사' || !selectedYear || !today) return false;
     const existing = data.payments.find((item) => item.fiscal_year_id === selectedYear.id && item.member_id === member.id && item.month === month);
     const status = getDuesStatus(member, selectedYear, month, existing, fiscalYears, data.payments, today);
-    if (status !== 'due' && status !== 'paid') {
+    if (!isDuesPayable(status) && status !== 'paid') {
       reportPaymentError('납부 대상 회비만 처리할 수 있습니다.');
       return false;
     }
@@ -384,11 +384,11 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
   };
 
   const handleBulkPaid = async (memberIds: string[], month: number) => {
-    if (!adminMode || !selectedYear || paymentMutation.current) return { ok: false, message: '다른 납부 처리가 진행 중입니다.' };
+    if (!adminMode || !selectedYear || !today || paymentMutation.current) return { ok: false, message: '다른 납부 처리가 진행 중입니다.' };
     const targets = activeApprovedProfiles.filter((member) => memberIds.includes(member.id));
     if (!memberIds.length || memberIds.length > 200 || targets.length !== memberIds.length || targets.some((member) => {
       const payment = data.payments.find((item) => item.member_id === member.id && item.fiscal_year_id === selectedYear.id && item.month === month);
-      return getDuesStatus(member, selectedYear, month, payment, fiscalYears, data.payments, today) !== 'due';
+      return !isDuesPayable(getDuesStatus(member, selectedYear, month, payment, fiscalYears, data.payments, today));
     })) return { ok: false, message: '납부 대상이 변경되었습니다. 다시 선택해 주세요.' };
     paymentMutation.current = true;
     setPaymentSaving(true);
@@ -412,10 +412,10 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
   };
 
   const openPaymentAction = (member: Profile, month: number) => {
-    if (!adminMode || member.member_grade === '간사' || !selectedYear) return;
+    if (!adminMode || member.member_grade === '간사' || !selectedYear || !today) return;
     const payment = data.payments.find((item) => item.fiscal_year_id === selectedYear.id && item.member_id === member.id && item.month === month);
     const status = getDuesStatus(member, selectedYear, month, payment, fiscalYears, data.payments, today);
-    if (status === 'before' || status === 'future') return;
+    if (status === 'before') return;
     setPaymentMode(status === 'exempt' ? 'exempt' : 'paid');
     setActionMessage('');
     setPaymentActionTarget({ member, month });
@@ -576,6 +576,11 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
       : undefined;
   const paymentActionManualExempt = Boolean(paymentActionPayment?.manual_exempt);
   const paymentActionPaid = Boolean(paymentActionPayment?.paid);
+  const paymentActionStatus = paymentActionTarget && selectedYear
+    ? getDuesStatus(paymentActionTarget.member, selectedYear, paymentActionTarget.month, paymentActionPayment, fiscalYears, data.payments, today)
+    : null;
+  const paymentActionFuturePeriod = Boolean(paymentActionTarget && selectedYear && today &&
+    selectedYear.year * 12 + paymentActionTarget.month > koreanYearMonth(today).year * 12 + koreanYearMonth(today).month);
   const paymentActionAutoExempt =
     Boolean(paymentActionTarget && selectedYear) &&
     isFeeExempt(
@@ -586,7 +591,7 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
       paymentActionTarget!.month
     );
   const paymentActionCanTogglePaid = Boolean(paymentActionTarget && !paymentActionAutoExempt && !paymentActionManualExempt);
-  const paymentActionCanManualExempt = Boolean(paymentActionTarget && !paymentActionPaid && !paymentActionAutoExempt);
+  const paymentActionCanManualExempt = Boolean(paymentActionTarget && !paymentActionPaid && !paymentActionAutoExempt && !paymentActionFuturePeriod);
 
   if (!hasFiscalYear) {
     return (
@@ -727,16 +732,16 @@ export function ClubDashboard({ initialData, source, events = null, view = 'over
             <strong className="text-2xl font-semibold tabular-nums">{formatCurrency(paymentActionPaid ? paymentActionPayment?.charged_amount ?? 0 : duesAmount(paymentActionTarget.member))}</strong>
           </div>
           <div role="group" aria-label="회비 처리 방식" className="mb-5 flex gap-6 border-b border-slate-200">
-            {(['paid', 'exempt'] as const).map((mode) => <button key={mode} type="button" aria-pressed={paymentMode === mode} disabled={paymentSaving || (mode === 'paid' && (paymentActionManualExempt || paymentActionAutoExempt)) || (mode === 'exempt' && paymentActionPaid)} onClick={() => setPaymentMode(mode)} className={`min-h-11 border-b-2 text-sm disabled:opacity-40 ${paymentMode === mode ? 'border-emerald-700 font-semibold text-slate-900' : 'border-transparent text-slate-500'}`}>{mode === 'paid' ? '납부 처리' : '면제 관리'}</button>)}
+            {(['paid', 'exempt'] as const).map((mode) => <button key={mode} type="button" aria-pressed={paymentMode === mode} disabled={paymentSaving || (mode === 'paid' && (paymentActionManualExempt || paymentActionAutoExempt)) || (mode === 'exempt' && (paymentActionPaid || paymentActionFuturePeriod))} onClick={() => setPaymentMode(mode)} className={`min-h-11 border-b-2 text-sm disabled:opacity-40 ${paymentMode === mode ? 'border-emerald-700 font-semibold text-slate-900' : 'border-transparent text-slate-500'}`}>{mode === 'paid' ? paymentActionFuturePeriod ? '선납 처리' : '납부 처리' : '면제 관리'}</button>)}
           </div>
           <div className="mb-5 flex items-center justify-between text-sm">
             <span className="text-slate-500">현재 상태</span>
-            <span className={`rounded px-2 py-1 text-xs ${paymentActionPaid ? 'bg-emerald-50 text-emerald-700' : paymentActionManualExempt || paymentActionAutoExempt ? 'bg-slate-100 text-slate-500' : 'bg-rose-50 text-rose-700'}`}>{paymentActionManualExempt ? '수동 면제' : paymentActionAutoExempt ? '자동 면제' : paymentActionPaid ? '납부 완료' : '미납'}</span>
+            <span className={`rounded px-2 py-1 text-xs ${paymentActionPaid ? 'bg-emerald-50 text-emerald-700' : paymentActionManualExempt || paymentActionAutoExempt || paymentActionStatus === 'future' ? 'bg-slate-100 text-slate-500' : 'bg-rose-50 text-rose-700'}`}>{paymentActionManualExempt ? '수동 면제' : paymentActionAutoExempt ? '자동 면제' : paymentActionStatus ? DUES_STATUS_LABELS[paymentActionStatus] : '—'}</span>
           </div>
           {paymentMode === 'paid' ? (
             <>
-              <button type="button" disabled={paymentSaving || !paymentActionCanTogglePaid} onClick={() => void handlePaymentActionTogglePaid(paymentActionTarget.member, paymentActionTarget.month)} className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-40 ${paymentActionPaid ? 'border border-slate-200 text-rose-700' : 'bg-emerald-700 text-white hover:bg-emerald-800'}`}><Check className="h-4 w-4" />{paymentSaving ? '처리 중…' : paymentActionPaid ? '납부 취소' : '납부 완료로 변경'}</button>
-              <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-500"><Info className="mt-0.5 h-4 w-4 shrink-0" />{paymentActionPaid ? '납부 취소 시 해당 월을 미납 상태로 되돌립니다.' : '실제 계좌의 입금 내역을 확인한 뒤 처리해 주세요.'}</p>
+              <button type="button" disabled={paymentSaving || !paymentActionCanTogglePaid} onClick={() => void handlePaymentActionTogglePaid(paymentActionTarget.member, paymentActionTarget.month)} className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-40 ${paymentActionPaid ? 'border border-slate-200 text-rose-700' : 'bg-emerald-700 text-white hover:bg-emerald-800'}`}><Check className="h-4 w-4" />{paymentSaving ? '처리 중…' : paymentActionPaid ? '납부 취소' : paymentActionFuturePeriod ? '선납 완료로 변경' : '납부 완료로 변경'}</button>
+              <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-500"><Info className="mt-0.5 h-4 w-4 shrink-0" />{paymentActionPaid ? `납부 취소 시 해당 월을 ${paymentActionFuturePeriod ? '예정' : '미납'} 상태로 되돌립니다.` : '실제 계좌의 입금 내역을 확인한 뒤 처리해 주세요.'}</p>
             </>
           ) : (
             <>

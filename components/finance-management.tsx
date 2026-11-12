@@ -24,7 +24,6 @@ import { ResponsiveDialog } from '@/components/ui/responsive-dialog';
 import { SettlementBreakdown } from '@/components/settlement-breakdown';
 import { calculateChargeSettlement } from '@/lib/charge-settlement';
 import { summarizeFinance } from '@/lib/finance-summary';
-import { formatRecordedDate, recentTransactions } from '@/lib/dashboard-overview';
 import { ArrowUpRight, ChevronDown, Download, Plus, Trash2 } from 'lucide-react';
 
 const CATEGORY_LABELS: Record<AdditionalChargeCategory, string> = {
@@ -48,7 +47,7 @@ function parseNumberInput(value: string) {
   return digits ? Number(digits) : 0;
 }
 
-export function FinanceManagement({ bundle, source, initialView = 'ledger' }: { bundle: DashboardBundle; source: 'mock' | 'spring'; initialView?: 'ledger' | 'charges' | 'income' | 'expense' }) {
+export function FinanceManagement({ bundle, source, initialView = 'charges' }: { bundle: DashboardBundle; source: 'mock' | 'spring'; initialView?: 'charges' | 'income' | 'expense' }) {
   const router = useRouter();
   const [data, setData] = useState(bundle);
   const [selectedYearId, setSelectedYearId] = useState(bundle.selectedYear?.id ?? bundle.fiscalYears[0]?.id ?? '');
@@ -73,12 +72,15 @@ export function FinanceManagement({ bundle, source, initialView = 'ledger' }: { 
   const [chargeFilter, setChargeFilter] = useState<'settlement_pending' | 'settlement_completed'>('settlement_pending');
   const [chargeAmountForms, setChargeAmountForms] = useState<Record<string, { amount: string; reason: string }>>({});
   const [settlementActualCostForms, setSettlementActualCostForms] = useState<Record<string, string>>({});
-  const [financeView, setFinanceView] = useState<'ledger' | 'charges' | 'income' | 'expense'>(initialView);
   const [showChargeForm, setShowChargeForm] = useState(false);
   const [settlementTarget, setSettlementTarget] = useState<{ groupId: string; actualCost: number } | null>(null);
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (initialView !== 'charges') document.getElementById(`finance-${initialView}`)?.scrollIntoView({ block: 'start' });
+  }, [initialView]);
 
   useEffect(() => {
     setData(bundle);
@@ -669,16 +671,11 @@ export function FinanceManagement({ bundle, source, initialView = 'ledger' }: { 
         </div>
       </section>
 
-      <div role="group" aria-label="재정 관리 보기" className="flex flex-wrap gap-5 border-b border-slate-200">
-        {(['ledger', 'charges', 'income', 'expense'] as const).map((value) => <button key={value} type="button" aria-pressed={financeView === value} onClick={() => setFinanceView(value)} className={`min-h-11 border-b-2 text-sm ${financeView === value ? 'border-emerald-700 font-semibold text-slate-900' : 'border-transparent text-slate-500'}`}>{{ ledger: '전체 내역', charges: '추가 비용 정산', income: '기타 세입', expense: '지출' }[value]}</button>)}
-      </div>
-      {financeView === 'ledger' && selectedYear ? <FinanceLedger data={data} fiscalYearId={selectedYear.id} /> : null}
-      {financeView === 'charges' ? (
-      <section className="workspace-section">
+      <section id="finance-charges" className="workspace-section scroll-mt-6">
         <div className="flex flex-col gap-3 border-b border-slate-200/80 pb-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
 
-            <h2 className="workspace-section-title">추가 비용 정산</h2>
+            <h2 className="workspace-section-title">추가 비용 관리</h2>
 
           </div>
           <input
@@ -1107,9 +1104,8 @@ export function FinanceManagement({ bundle, source, initialView = 'ledger' }: { 
         </div>
       </section>
 
-      ) : null}
-      <div>
-        {financeView === 'income' ? <CrudFinanceList
+      <div className="finance-entry-columns grid min-w-0 gap-8 border-t border-slate-200 pt-6 lg:grid-cols-2">
+        <CrudFinanceList
           title="기타 세입 관리"
           kind="income"
           total={incomeTotal}
@@ -1120,8 +1116,8 @@ export function FinanceManagement({ bundle, source, initialView = 'ledger' }: { 
           onAmountChange={(value) => setIncomeForm((current) => ({ ...current, amount: value }))}
           onAdd={() => addEntry('income')}
           onDelete={(id) => removeEntry('income', id)}
-        /> : null}
-        {financeView === 'expense' ? <CrudFinanceList
+        />
+        <CrudFinanceList
           title="지출 관리"
           kind="expense"
           total={expenseTotal}
@@ -1132,8 +1128,8 @@ export function FinanceManagement({ bundle, source, initialView = 'ledger' }: { 
           onAmountChange={(value) => setExpenseForm((current) => ({ ...current, amount: value }))}
           onAdd={() => addEntry('expense')}
           onDelete={(id) => removeEntry('expense', id)}
-          onOpenGroup={(groupId) => { const group = data.chargeGroups.find((item) => item.id === groupId); setChargeFilter(group?.settlement_completed ? 'settlement_completed' : 'settlement_pending'); setGroupSearch(''); setFinanceView('charges'); setExpandedGroupId(groupId); }}
-        /> : null}
+          onOpenGroup={(groupId) => { const group = data.chargeGroups.find((item) => item.id === groupId); setChargeFilter(group?.settlement_completed ? 'settlement_completed' : 'settlement_pending'); setGroupSearch(''); setExpandedGroupId(groupId); document.getElementById('finance-charges')?.scrollIntoView({ block: 'start' }); }}
+        />
       </div>
       </div>
       {settlementTarget ? <ResponsiveDialog title="정산 금액 확인" busy={isPending} onClose={() => setSettlementTarget(null)}>
@@ -1173,7 +1169,7 @@ function CrudFinanceList({
   onOpenGroup?: (id: string) => void;
 }) {
   return (
-    <section className="workspace-section">
+    <section id={`finance-${kind}`} className="workspace-section min-w-0 scroll-mt-6">
       <div className="flex items-end justify-between border-b border-slate-200/80 pb-4">
         <div>
 
@@ -1181,13 +1177,14 @@ function CrudFinanceList({
         </div>
         <span className="text-sm font-semibold text-slate-500">합계 {formatCurrency(total)}</span>
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_140px_auto]">
+      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] gap-3">
         <input
           value={labelValue}
           onChange={(event) => onLabelChange(event.target.value)}
           type="text"
           placeholder={kind === 'income' ? '예: 찬조금, 후원금' : '예: 대관료, 유니폼비'}
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+          aria-label={kind === 'income' ? '기타 세입 항목' : '지출 항목'}
+          className="col-span-2 min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-emerald-600"
         />
         <input
           value={amountValue}
@@ -1195,7 +1192,8 @@ function CrudFinanceList({
           type="text"
           inputMode="numeric"
           placeholder="금액"
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none"
+          aria-label={kind === 'income' ? '기타 세입 금액' : '지출 금액'}
+          className="min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-emerald-600"
         />
         <button
           onClick={onAdd}
@@ -1206,12 +1204,12 @@ function CrudFinanceList({
       </div>
       <div className="mt-4 space-y-3">
         {items.length ? items.map((item) => (
-          <div key={item.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div>
-              <p className="font-semibold text-slate-900">{item.label}</p>
+          <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-3">
+            <div className="min-w-0 flex-1 basis-32">
+              <p className="break-words text-sm font-semibold text-slate-900">{item.label}</p>
               <p className="text-xs text-slate-500">{kind === 'income' ? '세입 항목' : '지출 항목'}</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <span className="text-sm font-black text-slate-900">{formatCurrency(item.amount)}</span>
               {item.charge_group_id ? <button type="button" onClick={() => onOpenGroup?.(item.charge_group_id!)} className="inline-flex min-h-9 items-center gap-1 text-xs text-emerald-700">정산에서 확인<ArrowUpRight className="h-3 w-3" /></button>
                 : <button type="button" onClick={() => onDelete(item.id)} aria-label={`${item.label} 삭제`} title="삭제" className="flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>}
@@ -1221,15 +1219,4 @@ function CrudFinanceList({
       </div>
     </section>
   );
-}
-
-function FinanceLedger({ data, fiscalYearId }: { data: DashboardBundle; fiscalYearId: string }) {
-  const entries = recentTransactions(data, fiscalYearId, true);
-  return <section className="workspace-section" aria-label="전체 재정 내역">
-    <div className="mb-3 flex items-center justify-between"><h2 className="workspace-section-title">전체 내역</h2><span className="text-xs text-slate-500">{entries.length}건</span></div>
-    <table className="w-full table-fixed border-collapse text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="w-16 px-2 py-3 text-left font-medium">기록일</th><th className="px-2 py-3 text-left font-medium">항목</th><th className="w-28 px-2 py-3 text-right font-medium">금액</th></tr></thead><tbody>
-      {entries.map((item) => <tr key={item.id}><td className="border-b border-slate-100 px-2 py-3 text-xs tabular-nums text-slate-500">{formatRecordedDate(item.recordedAt)}</td><td className="border-b border-slate-100 px-2 py-3"><span className="block break-words font-medium">{item.title}</span><span className="mt-1 block break-words text-xs text-slate-500">{item.description}</span></td><td className={`border-b border-slate-100 px-2 py-3 text-right text-xs font-semibold tabular-nums sm:text-sm ${item.direction === 'income' ? 'text-emerald-700' : 'text-slate-800'}`}>{item.direction === 'income' ? '+' : '−'}{formatCurrency(item.amount)}</td></tr>)}
-      {!entries.length ? <tr><td colSpan={3} className="py-8 text-center text-sm text-slate-500">등록된 내역이 없습니다.</td></tr> : null}
-    </tbody></table>
-  </section>;
 }

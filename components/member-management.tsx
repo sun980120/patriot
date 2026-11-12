@@ -28,6 +28,7 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
   const [pendingSearch, setPendingSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [inactiveSearch, setInactiveSearch] = useState('');
+  const [mobileSection, setMobileSection] = useState<'pending' | 'active' | 'inactive'>('active');
   const [message, setMessage] = useState('');
   const [toastTone, setToastTone] = useState<ToastTone>('info');
   const [isPending, startTransition] = useTransition();
@@ -358,7 +359,18 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       <div className="workspace-page space-y-6" aria-busy={isPending}>
       <PageHeading title="회원 관리" description={`활성 ${active.length}명 · 승인 대기 ${pending.length}명 · 비활성 ${inactive.length}명`} />
 
+      <div role="group" aria-label="회원 상태별 보기" className="sticky top-0 z-20 grid grid-cols-3 border-b border-slate-200 bg-white xl:hidden">
+        {([
+          ['pending', '승인 대기', pending.length],
+          ['active', '활성 회원', active.length],
+          ['inactive', '비활성', inactive.length],
+        ] as const).map(([section, label, count]) => <button key={section} type="button" aria-pressed={mobileSection === section} aria-controls={`members-${section}`} onClick={() => setMobileSection(section)} className={`flex min-h-12 flex-wrap items-center justify-center gap-1 border-b-2 px-1 py-2 text-sm ${mobileSection === section ? 'border-emerald-700 font-semibold text-emerald-800' : 'border-transparent text-slate-500'}`}>{label}<span className="tabular-nums">{count}</span></button>)}
+      </div>
+      <div className="member-columns grid min-w-0 items-start gap-6 xl:grid-cols-3">
       <SectionCard
+        id="members-pending"
+        active={mobileSection === 'pending'}
+        count={pending.length}
         title="승인 대기 회원"
         emptyText={pendingSearch.trim() ? '검색된 승인 대기 회원이 없습니다.' : '대기 중인 가입 신청이 없습니다.'}
         searchValue={pendingSearch}
@@ -393,6 +405,9 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       </SectionCard>
 
       <SectionCard
+        id="members-active"
+        active={mobileSection === 'active'}
+        count={active.length}
         title="활성 회원"
         emptyText={activeSearch.trim() ? '검색된 활성 회원이 없습니다.' : '활성 회원이 없습니다.'}
         searchValue={activeSearch}
@@ -456,6 +471,9 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
       </SectionCard>
 
       <SectionCard
+        id="members-inactive"
+        active={mobileSection === 'inactive'}
+        count={inactive.length}
         title="비활성 회원"
         emptyText={inactiveSearch.trim() ? '검색된 비활성 회원이 없습니다.' : '비활성 회원이 없습니다.'}
         searchValue={inactiveSearch}
@@ -489,6 +507,7 @@ export function MemberManagement({ bundle, source }: { bundle: DashboardBundle; 
         ))}
       </SectionCard>
       </div>
+      </div>
     </>
   );
 }
@@ -497,7 +516,6 @@ function buildDetails(member: DashboardBundle['profiles'][number], remainingMont
   const combinedAddress = [member.base_address, member.detail_address].filter(Boolean).join(', ') || member.address;
 
   return [
-    member.username ? { label: '아이디', value: member.username } : null,
     member.phone_number ? { label: '전화번호', value: member.phone_number } : null,
     combinedAddress ? { label: '주소', value: combinedAddress } : null,
     member.birth_date ? { label: '생년월일', value: member.birth_date } : null,
@@ -511,12 +529,18 @@ function buildDetails(member: DashboardBundle['profiles'][number], remainingMont
 }
 
 function SectionCard({
+  id,
+  active,
+  count,
   title,
   emptyText,
   searchValue,
   onSearchChange,
   children,
 }: {
+  id: string;
+  active: boolean;
+  count: number;
   title: string;
   emptyText: string;
   searchValue: string;
@@ -525,20 +549,21 @@ function SectionCard({
 }) {
   const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
   return (
-    <section className="workspace-section">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="workspace-section-title">{title}</h2>
+    <section id={id} aria-labelledby={`${id}-title`} className={`workspace-section min-w-0 ${active ? '' : 'hidden xl:block'}`}>
+      <div className="grid gap-3">
+        <h2 id={`${id}-title`} className="workspace-section-title flex items-center justify-between gap-2">{title}<span className="text-sm font-normal tabular-nums text-slate-500">{count}명</span></h2>
         <input
           value={searchValue}
           onChange={(event) => onSearchChange(event.target.value)}
           type="text"
+          aria-label={`${title} 검색`}
           placeholder="이름, 아이디, 전화번호 검색"
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-brand-400 focus:outline-none sm:max-w-sm"
+          className="min-w-0 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-emerald-600"
         />
       </div>
       <div className="mt-4">
         {hasChildren ? (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-3">
             {children}
           </div>
         ) : (
@@ -571,8 +596,8 @@ function MemberRow({
   disabled?: boolean;
 }) {
   return (
-    <div className="border-b border-slate-200 bg-white py-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <article aria-label={`${name} 회원 정보`} className="min-w-0 rounded-md border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1">
           <p className="break-words text-sm font-semibold text-slate-900">{name}{username ? <span className="ml-2 break-all text-xs font-normal text-slate-500">@{username}</span> : null}</p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -586,11 +611,11 @@ function MemberRow({
                     ? '관리자'
                     : '회원'}
             </span>
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">{status}</span>
+            {status === '활성' || status === '비활성' ? <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">{status}</span> : null}
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 lg:max-w-[420px] lg:justify-end">
+        <div className="flex flex-wrap gap-2">
           {actions.map((action) => {
             const Icon = action.label.includes('삭제') ? Trash2 : action.label.includes('비밀번호') ? KeyRound : action.label.includes('승인') ? Check : action.label.includes('간사') || action.label.includes('권한') ? ShieldCheck : UserRound;
             const danger = action.label.includes('삭제') || action.label.includes('비활성');
@@ -600,7 +625,7 @@ function MemberRow({
       </div>
 
       {details.length ? (
-        <div className="mt-3 grid gap-x-6 gap-y-1 text-xs leading-5 text-slate-500 sm:grid-cols-2">
+        <div className="mt-3 grid gap-y-1 break-words text-xs leading-5 text-slate-500">
           {details.map((detail) => (
             <p key={detail.label}>
               <span className="font-semibold text-slate-600">{detail.label}:</span> {detail.value}
@@ -610,7 +635,7 @@ function MemberRow({
       ) : null}
 
       {extra ? <fieldset disabled={disabled} aria-label={`${name} 면제 설정`} className="mt-4 min-w-0">{extra}</fieldset> : null}
-    </div>
+    </article>
   );
 }
 
@@ -630,16 +655,17 @@ function FeeExemptionEditor({
   onClear: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+    <div className="border-t border-slate-100 pt-3">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">회비 면제 설정</p>
-      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
           type="text"
           inputMode="numeric"
           placeholder="면제 개월"
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-brand-400 focus:outline-none sm:max-w-[140px]"
+          aria-label="회비 면제 개월"
+          className="min-w-0 w-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-emerald-600"
         />
         <button onClick={onSave} className="rounded-xl bg-brand-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-800">
           저장

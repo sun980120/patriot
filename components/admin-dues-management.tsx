@@ -1,15 +1,15 @@
 'use client';
 
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, Download, Plus, Search, X } from 'lucide-react';
 import { ResponsiveDialog } from '@/components/ui/responsive-dialog';
-import { DUES_STATUS_LABELS, duesAmount, getDuesExemption, getDuesStatus, koreanYearMonth, type DuesExemption, type DuesStatus } from '@/lib/dues';
+import { DUES_STATUS_LABELS, duesAmount, getDuesExemption, getDuesStatus, isDuesPayable, koreanYearMonth, type DuesExemption, type DuesStatus } from '@/lib/dues';
 import { DuesExemptionNote } from '@/components/dues-exemption-note';
 import { formatCurrency } from '@/lib/utils';
 import { overviewDuesRows } from '@/lib/dashboard-overview';
 import type { FiscalYear, PaymentRecord, Profile } from '@/lib/types';
 
-type Filter = 'all' | 'due' | 'paid' | 'exempt';
+type Filter = 'all' | 'due' | 'paid' | 'exempt' | 'future';
 type Cell = { month: number; status: DuesStatus; payment?: PaymentRecord; exemption: DuesExemption | null };
 type DuesRow = { member: Profile; cells: Cell[]; paidTotal: number; dueTotal: number; paidMonths: number };
 type Props = {
@@ -70,7 +70,6 @@ export function AdminDuesManagement(props: Props) {
   const [focusedId, setFocusedId] = useState<string | null>(props.initialMemberId ?? null);
   const [arrearsOnly, setArrearsOnly] = useState(props.initialArrears ?? false);
   const [filter, setFilter] = useState<Filter>(props.initialFilter ?? 'all');
-  const [mobileFilter, setMobileFilter] = useState<Filter>(props.initialFilter ?? 'due');
   const [view, setView] = useState<'monthly' | 'annual'>('monthly');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmIds, setConfirmIds] = useState<string[] | null>(null);
@@ -84,6 +83,11 @@ export function AdminDuesManagement(props: Props) {
   const preferredMonth = current && year.year === current.year ? current.month : current && year.year > current.year ? months[0] : months.at(-1);
   const defaultMonth = months.includes(preferredMonth ?? 0) ? preferredMonth! : months.filter((value) => value <= (preferredMonth ?? 0)).at(-1) ?? months[0];
   const month = selectedMonth !== null && months.includes(selectedMonth) ? selectedMonth : defaultMonth;
+  const futureMonth = Boolean(current && year.year * 12 + month > current.year * 12 + current.month);
+  const [mobileFilter, setMobileFilter] = useState<Filter>(props.initialFilter ?? (futureMonth ? 'future' : 'due'));
+  useEffect(() => {
+    if (futureMonth && !props.initialFilter) setMobileFilter((value) => value === 'due' ? 'future' : value);
+  }, [futureMonth, props.initialFilter]);
   const rows = useMemo<DuesRow[]>(() => members.map((member) => {
     const history = payments.filter((payment) => payment.member_id === member.id);
     const cells = months.map((value) => {
@@ -102,10 +106,10 @@ export function AdminDuesManagement(props: Props) {
   const allPeriodDebts = useMemo(() => new Map(overviewDuesRows(members, fiscalYears, payments, today).map((row) => [row.member.id, row.dueAmount])), [members, fiscalYears, payments, today]);
   const focusedMember = members.find((member) => member.id === focusedId);
   const scopedRows = rows.filter((row) => (!focusedMember || row.member.id === focusedMember.id) && (!arrearsOnly || (allPeriodDebts.get(row.member.id) ?? 0) > 0));
-  const counts = { all: scopedRows.length, due: 0, paid: 0, exempt: 0, target: 0, dueAmount: 0 };
+  const counts = { all: scopedRows.length, due: 0, paid: 0, exempt: 0, future: 0, target: 0, dueAmount: 0 };
   for (const row of scopedRows) {
     const status = monthlyCell(row)?.status;
-    if (status === 'paid' || status === 'due' || status === 'exempt') counts[status]++;
+    if (status === 'paid' || status === 'due' || status === 'exempt' || status === 'future') counts[status]++;
     if (status === 'due' || status === 'paid' || status === 'future') counts.target++;
     if (status === 'due') counts.dueAmount += duesAmount(row.member);
   }
@@ -113,22 +117,28 @@ export function AdminDuesManagement(props: Props) {
   const filterRows = (value: Filter) => scopedRows.filter((row) => row.member.full_name.toLocaleLowerCase('ko-KR').includes(keyword) && (value === 'all' || monthlyCell(row)?.status === value));
   const desktopRows = filterRows(filter);
   const mobileRows = filterRows(mobileFilter);
-  const eligibleIds = desktopRows.filter((row) => monthlyCell(row)?.status === 'due').map((row) => row.member.id);
+  const eligibleIds = today ? desktopRows.filter((row) => { const cell = monthlyCell(row); return cell && isDuesPayable(cell.status); }).map((row) => row.member.id) : [];
   // Revalidation can change eligibility while a selection or confirmation is open.
   const eligibleSelected = selectedIds.filter((id) => eligibleIds.includes(id));
   const confirmedRows = (confirmIds ?? []).flatMap((id) => rows.filter((row) => row.member.id === id));
-  const confirmationValid = confirmedRows.length === confirmIds?.length && confirmedRows.every((row) => monthlyCell(row)?.status === 'due');
+  const confirmationValid = Boolean(today) && confirmedRows.length === confirmIds?.length && confirmedRows.every((row) => { const cell = monthlyCell(row); return cell && isDuesPayable(cell.status); });
   const annualRow = rows.find((row) => row.member.id === annualMemberId);
 
-  const changeMonth = (value: number) => { setSelectedMonth(value); setSelectedIds([]); setError(''); };
+  const changeMonth = (value: number) => {
+    setSelectedMonth(value); setSelectedIds([]); setError('');
+    const nextFuture = Boolean(current && year.year * 12 + value > current.year * 12 + current.month);
+    const nextFilter = nextFuture ? 'future' : 'due';
+    setMobileFilter((previous) => previous === 'due' || previous === 'future' ? nextFilter : previous);
+    setFilter((previous) => previous === 'due' || previous === 'future' ? nextFilter : previous);
+  };
   const openCell = (row: DuesRow, cell: Cell) => {
-    if (cell.status === 'before' || cell.status === 'future' || row.member.member_grade === '간사') return;
+    if (!today || cell.status === 'before' || row.member.member_grade === '간사') return;
     setAnnualMemberId(null);
     onOpenPayment(row.member, cell.month);
   };
-  const filterTabs = (value: Filter, update: (next: Filter) => void) => <div role="group" aria-label={`${month}월 납부 상태 필터`} className="flex justify-between gap-4 border-b border-slate-200 text-sm sm:justify-start">
-    {(['all', 'due', 'paid', 'exempt'] as const).map((key) => <button key={key} type="button" aria-pressed={value === key} onClick={() => { update(key); setSelectedIds([]); }} className={`min-h-11 whitespace-nowrap border-b-2 py-2 ${value === key ? 'border-emerald-700 font-semibold text-slate-900' : 'border-transparent text-slate-500'}`}>
-      {{ all: '전체', due: '미납', paid: '완료', exempt: '면제' }[key]} <span className="tabular-nums">{counts[key]}</span>
+  const filterTabs = (value: Filter, update: (next: Filter) => void) => <div role="group" aria-label={`${month}월 납부 상태 필터`} className="grid grid-cols-5 gap-1 border-b border-slate-200 text-xs sm:flex sm:gap-4 sm:text-sm">
+    {(['all', 'due', 'paid', 'exempt', 'future'] as const).map((key) => <button key={key} type="button" aria-pressed={value === key} onClick={() => { update(key); setSelectedIds([]); }} className={`min-h-11 whitespace-nowrap border-b-2 py-2 ${value === key ? 'border-emerald-700 font-semibold text-slate-900' : 'border-transparent text-slate-500'}`}>
+      {{ all: '전체', due: '미납', paid: '완료', exempt: '면제', future: '예정' }[key]} <span className="tabular-nums">{counts[key]}</span>
     </button>)}
   </div>;
   const submitBulk = async () => {
@@ -165,7 +175,7 @@ export function AdminDuesManagement(props: Props) {
 
     <div className="mt-5 lg:hidden">
       <div role="group" aria-label="모바일 회비 보기" className="flex gap-5 border-b border-slate-200">
-        {(['monthly', 'annual'] as const).map((value) => <button key={value} type="button" aria-pressed={view === value} onClick={() => { setView(value); setMobileFilter(value === 'annual' ? 'all' : 'due'); }} className={`min-h-11 border-b-2 text-sm ${view === value ? 'border-emerald-700 font-semibold text-slate-900' : 'border-transparent text-slate-500'}`}>{value === 'monthly' ? '월별 관리' : '연간 요약'}</button>)}
+        {(['monthly', 'annual'] as const).map((value) => <button key={value} type="button" aria-pressed={view === value} onClick={() => { setView(value); setMobileFilter(value === 'annual' ? 'all' : futureMonth ? 'future' : 'due'); }} className={`min-h-11 border-b-2 text-sm ${view === value ? 'border-emerald-700 font-semibold text-slate-900' : 'border-transparent text-slate-500'}`}>{value === 'monthly' ? '월별 관리' : '연간 요약'}</button>)}
       </div>
       <div className="my-3 flex items-center justify-between">
         <button type="button" aria-label="이전 달" title="이전 달" disabled={months.indexOf(month) <= 0} onClick={() => changeMonth(months[months.indexOf(month) - 1])} className={`${buttonClass} !border-0`}><ChevronLeft className="h-4 w-4" /></button>
@@ -185,19 +195,19 @@ export function AdminDuesManagement(props: Props) {
 
     <p className="mb-3 hidden text-xs text-slate-500 lg:block">{month}월 기준 · 연간 합계와 누적 미납액은 전체 표시 월 기준</p>
     {eligibleSelected.length ? <div className="mb-3 hidden flex-wrap items-center justify-between gap-3 bg-emerald-50 p-3 text-sm text-emerald-900 lg:flex">
-      <span>{month}월 미납 {eligibleSelected.length}명 선택</span><div className="flex gap-2"><button type="button" className={buttonClass} onClick={() => setSelectedIds([])}>해제</button><button type="button" className={primaryClass} onClick={() => { setError(''); setConfirmIds(eligibleSelected); }}><Check className="h-4 w-4" />납부 처리</button></div>
+      <span>{month}월 {futureMonth ? '선납' : '납부'} {eligibleSelected.length}명 선택</span><div className="flex gap-2"><button type="button" className={buttonClass} onClick={() => setSelectedIds([])}>해제</button><button type="button" className={primaryClass} onClick={() => { setError(''); setConfirmIds(eligibleSelected); }}><Check className="h-4 w-4" />{futureMonth ? '선납 처리' : '납부 처리'}</button></div>
     </div> : null}
 
     <div className="hidden overflow-x-auto border-b border-slate-200 lg:block">
       <table className="w-full table-fixed border-separate border-spacing-0 text-xs" style={{ minWidth: 150 + months.length * 64 + 180 }}>
         <thead><tr className="text-slate-500">
-          <th className="sticky left-0 z-20 w-[150px] border-b border-slate-200 bg-slate-50 px-3 py-3 text-left font-medium"><label className="flex items-center gap-2"><input type="checkbox" aria-label="조회된 미납 회원 최대 200명 선택" disabled={!eligibleIds.length} checked={eligibleIds.length > 0 && eligibleIds.every((id) => eligibleSelected.includes(id))} ref={(node) => { if (node) node.indeterminate = eligibleSelected.length > 0 && !eligibleIds.every((id) => eligibleSelected.includes(id)); }} onChange={(event) => setSelectedIds(event.target.checked ? eligibleIds.slice(0, 200) : [])} className="h-4 w-4 accent-emerald-700" />회원</label></th>
+          <th className="sticky left-0 z-20 w-[150px] border-b border-slate-200 bg-slate-50 px-3 py-3 text-left font-medium"><label className="flex items-center gap-2"><input type="checkbox" aria-label="조회된 납부 대상 회원 최대 200명 선택" disabled={!eligibleIds.length} checked={eligibleIds.length > 0 && eligibleIds.every((id) => eligibleSelected.includes(id))} ref={(node) => { if (node) node.indeterminate = eligibleSelected.length > 0 && !eligibleIds.every((id) => eligibleSelected.includes(id)); }} onChange={(event) => setSelectedIds(event.target.checked ? eligibleIds.slice(0, 200) : [])} className="h-4 w-4 accent-emerald-700" />회원</label></th>
           {months.map((value) => <th key={value} className={`border-b border-slate-200 bg-slate-50 text-center font-medium ${value === month ? 'text-emerald-700' : ''}`}><button type="button" aria-label={`${value}월 조회 기준 선택`} aria-pressed={value === month} onClick={() => changeMonth(value)} className="min-h-12 w-full px-1 py-2 hover:bg-emerald-50">{value}월{value === month ? <span className="block text-[10px]">선택 월</span> : null}</button></th>)}
           <th className="w-[90px] border-b border-slate-200 bg-slate-50 px-2 py-3 text-right font-medium">연간 납부액</th><th className="w-[90px] border-b border-slate-200 bg-slate-50 px-2 py-3 text-right font-medium">누적 미납액</th>
         </tr></thead>
         <tbody>{desktopRows.map((row) => <tr key={row.member.id}>
-          <td className="sticky left-0 z-10 border-b border-slate-100 bg-white px-3 py-2"><label className="flex min-h-9 items-center gap-2"><input type="checkbox" aria-label={`${row.member.full_name} ${month}월 납부 처리 선택`} disabled={monthlyCell(row)?.status !== 'due' || (eligibleSelected.length >= 200 && !eligibleSelected.includes(row.member.id))} checked={eligibleSelected.includes(row.member.id)} onChange={(event) => setSelectedIds((ids) => event.target.checked ? [...ids, row.member.id] : ids.filter((id) => id !== row.member.id))} className="h-4 w-4 accent-emerald-700 disabled:opacity-30" /><span className="min-w-0"><span className="block break-words text-sm font-semibold text-slate-900">{row.member.full_name}</span><span className="text-[11px] font-normal text-slate-500">{row.member.member_grade}</span>{(allPeriodDebts.get(row.member.id) ?? 0) > row.dueTotal ? <span className="mt-1 block break-words text-[11px] text-amber-700">다른 연도 미납 {formatCurrency((allPeriodDebts.get(row.member.id) ?? 0) - row.dueTotal)}</span> : null}</span></label></td>
-          {row.cells.map((cell) => <td key={cell.month} className={`border-b border-slate-100 p-1 text-center ${cell.month === month ? 'bg-emerald-50/60' : 'bg-white'}`}><button type="button" disabled={cell.status === 'future' || cell.status === 'before' || row.member.member_grade === '간사'} onClick={() => openCell(row, cell)} aria-label={`${row.member.full_name} ${cell.month}월 ${DUES_STATUS_LABELS[cell.status]} 관리`} aria-description={cell.exemption ? `${cell.exemption.label} · ${cell.exemption.reason}` : undefined} title={`${cell.month}월 ${DUES_STATUS_LABELS[cell.status]}${cell.exemption ? ` · ${cell.exemption.label} · ${cell.exemption.reason}` : ''}`} className="flex min-h-10 w-full items-center justify-center rounded hover:bg-slate-100 disabled:cursor-default"><span className="block"><Status status={cell.status} compact /><DuesExemptionNote detail={cell.exemption} compact /></span></button></td>)}
+          <td className="sticky left-0 z-10 border-b border-slate-100 bg-white px-3 py-2"><label className="flex min-h-9 items-center gap-2"><input type="checkbox" aria-label={`${row.member.full_name} ${month}월 납부 처리 선택`} disabled={!eligibleIds.includes(row.member.id) || (eligibleSelected.length >= 200 && !eligibleSelected.includes(row.member.id))} checked={eligibleSelected.includes(row.member.id)} onChange={(event) => setSelectedIds((ids) => event.target.checked ? [...ids, row.member.id] : ids.filter((id) => id !== row.member.id))} className="h-4 w-4 accent-emerald-700 disabled:opacity-30" /><span className="min-w-0"><span className="block break-words text-sm font-semibold text-slate-900">{row.member.full_name}</span><span className="text-[11px] font-normal text-slate-500">{row.member.member_grade}</span>{(allPeriodDebts.get(row.member.id) ?? 0) > row.dueTotal ? <span className="mt-1 block break-words text-[11px] text-amber-700">다른 연도 미납 {formatCurrency((allPeriodDebts.get(row.member.id) ?? 0) - row.dueTotal)}</span> : null}</span></label></td>
+          {row.cells.map((cell) => <td key={cell.month} className={`border-b border-slate-100 p-1 text-center ${cell.month === month ? 'bg-emerald-50/60' : 'bg-white'}`}><button type="button" disabled={!today || cell.status === 'before' || row.member.member_grade === '간사'} onClick={() => openCell(row, cell)} aria-label={`${row.member.full_name} ${cell.month}월 ${DUES_STATUS_LABELS[cell.status]} 관리`} aria-description={cell.exemption ? `${cell.exemption.label} · ${cell.exemption.reason}` : undefined} title={`${cell.month}월 ${DUES_STATUS_LABELS[cell.status]}${cell.status === 'future' ? ' · 선납 가능' : ''}${cell.exemption ? ` · ${cell.exemption.label} · ${cell.exemption.reason}` : ''}`} className="flex min-h-10 w-full items-center justify-center rounded hover:bg-slate-100 disabled:cursor-default"><span className="block"><Status status={cell.status} compact /><DuesExemptionNote detail={cell.exemption} compact /></span></button></td>)}
           <td className="border-b border-slate-100 px-2 py-2 text-right tabular-nums text-slate-900">{row.paidTotal.toLocaleString('ko-KR')}</td><td className={`border-b border-slate-100 px-2 py-2 text-right tabular-nums ${row.dueTotal ? 'text-rose-700' : 'text-slate-400'}`}>{row.dueTotal.toLocaleString('ko-KR')}</td>
         </tr>)}{!desktopRows.length ? <tr><td colSpan={months.length + 3} className="py-10 text-center text-sm text-slate-500">{search ? '검색된 회원이 없습니다.' : '해당 상태의 회원이 없습니다.'}</td></tr> : null}</tbody>
       </table>
@@ -208,10 +218,10 @@ export function AdminDuesManagement(props: Props) {
       {mobileRows.map((row) => {
         const cell = monthlyCell(row);
         if (!cell) return null;
-        const readOnly = view === 'monthly' && (cell.status === 'future' || cell.status === 'before' || row.member.member_grade === '간사');
+        const readOnly = view === 'monthly' && (!today || cell.status === 'before' || row.member.member_grade === '간사');
         return <button key={row.member.id} type="button" aria-label={view === 'annual' ? `${row.member.full_name} 연간 납부 내역` : `${row.member.full_name} ${month}월 ${DUES_STATUS_LABELS[cell.status]} 관리`} disabled={readOnly} onClick={() => view === 'annual' ? setAnnualMemberId(row.member.id) : openCell(row, cell)} className="flex min-h-[76px] w-full items-center justify-between gap-3 py-3 text-left disabled:cursor-default">
           <span className="flex min-w-0 items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 text-xs text-slate-500" aria-hidden="true">{row.member.full_name.slice(0, 1)}</span><span className="min-w-0"><span className="block break-words text-sm font-semibold text-slate-900">{row.member.full_name}</span><span className="mt-0.5 block text-xs text-slate-500">{row.member.member_grade}{view === 'annual' ? ` · 납부 ${row.paidMonths}개월` : ''}</span><DuesExemptionNote detail={view === 'monthly' ? cell.exemption : null} />{(allPeriodDebts.get(row.member.id) ?? 0) > row.dueTotal ? <span className="mt-1 block break-words text-[11px] text-amber-700">다른 연도 미납 {formatCurrency((allPeriodDebts.get(row.member.id) ?? 0) - row.dueTotal)}</span> : null}</span></span>
-          <span className="flex shrink-0 items-center gap-2"><span className="grid justify-items-end gap-1">{view === 'monthly' ? <><Status status={cell.status} /><span className="text-sm font-semibold tabular-nums text-slate-800">{cell.status === 'paid' ? formatCurrency(cell.payment?.charged_amount ?? 0) : cell.status === 'due' ? formatCurrency(duesAmount(row.member)) : cell.status === 'exempt' ? '회비 면제' : '—'}</span></> : <><span className="text-sm font-semibold tabular-nums">{formatCurrency(row.paidTotal)}</span><span className="text-xs text-slate-500">누적 미납 {formatCurrency(row.dueTotal)}</span></>}</span>{!readOnly ? <ChevronRight className="h-4 w-4 text-slate-400" /> : null}</span>
+          <span className="flex shrink-0 items-center gap-2"><span className="grid justify-items-end gap-1">{view === 'monthly' ? <><Status status={cell.status} /><span className="text-sm font-semibold tabular-nums text-slate-800">{cell.status === 'paid' ? formatCurrency(cell.payment?.charged_amount ?? 0) : isDuesPayable(cell.status) ? formatCurrency(duesAmount(row.member)) : cell.status === 'exempt' ? '회비 면제' : '—'}</span></> : <><span className="text-sm font-semibold tabular-nums">{formatCurrency(row.paidTotal)}</span><span className="text-xs text-slate-500">누적 미납 {formatCurrency(row.dueTotal)}</span></>}</span>{!readOnly ? <ChevronRight className="h-4 w-4 text-slate-400" /> : null}</span>
         </button>;
       })}
       {!mobileRows.length ? <p className="py-8 text-center text-sm text-slate-500">{search ? '검색된 회원이 없습니다.' : mobileFilter === 'due' ? '해당 월의 미납 회원이 없습니다.' : '해당 상태의 회원이 없습니다.'}</p> : null}
@@ -219,7 +229,7 @@ export function AdminDuesManagement(props: Props) {
 
     {annualRow ? <ResponsiveDialog title={`${annualRow.member.full_name} · 연간 내역`} onClose={() => setAnnualMemberId(null)}>
       <p className="text-sm text-slate-500">{year.year}년 · {annualRow.member.member_grade}</p><p className="mt-3 text-2xl font-semibold tabular-nums">{formatCurrency(annualRow.paidTotal)}</p><p className="mt-2 text-sm text-slate-500">누적 미납 {formatCurrency(annualRow.dueTotal)}</p>
-      <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4">{annualRow.cells.map((cell) => <button key={cell.month} type="button" disabled={cell.status === 'before' || cell.status === 'future' || annualRow.member.member_grade === '간사'} onClick={() => openCell(annualRow, cell)} className="grid min-h-20 justify-items-center gap-2 rounded-md border border-slate-200 p-2 text-sm hover:bg-slate-50 disabled:cursor-default"><span>{cell.month}월</span><Status status={cell.status} /><DuesExemptionNote detail={cell.exemption} /></button>)}</div>
+      <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4">{annualRow.cells.map((cell) => <button key={cell.month} type="button" disabled={!today || cell.status === 'before' || annualRow.member.member_grade === '간사'} onClick={() => openCell(annualRow, cell)} className="grid min-h-20 justify-items-center gap-2 rounded-md border border-slate-200 p-2 text-sm hover:bg-slate-50 disabled:cursor-default"><span>{cell.month}월</span><Status status={cell.status} /><DuesExemptionNote detail={cell.exemption} /></button>)}</div>
     </ResponsiveDialog> : null}
     {confirmIds ? <ResponsiveDialog title="선택 회원 납부 처리" busy={saving} onClose={() => setConfirmIds(null)}>
       <p className="text-sm text-slate-500">{year.year}년 {month}월 · {confirmedRows.length}명</p><p className="my-4 text-2xl font-semibold tabular-nums">{formatCurrency(confirmedRows.reduce((sum, row) => sum + duesAmount(row.member), 0))}</p>

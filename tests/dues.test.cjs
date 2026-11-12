@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const loadTypescript = require('./load-typescript.cjs');
 
-const { getDuesStatus, getDuesExemption, isFeeExempt, koreanYearMonth, duesAmount } = loadTypescript('lib/dues.ts');
+const { getDuesStatus, getDuesExemption, isFeeExempt, isDuesPayable, koreanYearMonth, duesAmount } = loadTypescript('lib/dues.ts');
 const year = { id: '2026', year: 2026, visible_months: [5, 6, 7, 8, 9, 10, 11, 12] };
 const member = { id: 'member', member_grade: '정회원', joined_at: '2026-05-02T09:00:00', fee_exemption_months: 0, fee_exemption_start_date: null };
 const now = new Date('2026-11-11T00:00:00Z');
@@ -20,6 +20,19 @@ test('joining month is eligible, earlier months are not', () => {
 test('future period is scheduled while an advance payment remains paid', () => {
   assert.equal(status(member, 12), 'future');
   assert.equal(status(member, 12, payment(12, { paid: true })), 'paid');
+});
+test('unpaid and scheduled dues can be paid without counting scheduled dues as overdue', () => {
+  assert.equal(isDuesPayable(status(member, 11)), true);
+  assert.equal(isDuesPayable(status(member, 12)), true);
+  assert.equal(status(member, 12), 'future');
+  assert.equal(isDuesPayable(status(member, 12, payment(12, { paid: true }))), false);
+});
+test('advance payment does not bypass joining dates or exemptions', () => {
+  assert.equal(isDuesPayable(status({ ...member, joined_at: '2027-01-01' }, 12)), false);
+  assert.equal(isDuesPayable(status({ ...member, member_grade: '간사' }, 12)), false);
+  assert.equal(isDuesPayable(status(member, 12, payment(12, { manual_exempt: true }))), false);
+  const exempt = { ...member, fee_exemption_months: 1, fee_exemption_start_date: '2026-12-01' };
+  assert.equal(isDuesPayable(status(exempt, 12)), false);
 });
 test('staff and manually exempt records are not unpaid', () => {
   assert.equal(status({ ...member, member_grade: '간사' }, 11), 'exempt');
