@@ -14,9 +14,11 @@ type NotificationChangeDetail = {
 export function NotificationNavLink({
   className = '',
   initialUnreadCount,
+  variant = 'default',
 }: {
   className?: string;
   initialUnreadCount?: number;
+  variant?: 'default' | 'quiet';
 }) {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount ?? 0);
@@ -63,7 +65,7 @@ export function NotificationNavLink({
       href={'/notifications' as Route}
       aria-label={unreadCount > 0 ? `읽지 않은 알림 ${unreadCount}개` : '알림'}
       className={`relative inline-flex h-11 w-11 items-center justify-center rounded-full font-semibold transition ${
-        active ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-brand-100 hover:text-brand-800'
+        variant === 'quiet' ? 'text-slate-500 hover:bg-slate-50' : active ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-brand-100 hover:text-brand-800'
       } ${className}`}
     >
       <Bell className="h-5 w-5" />

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { NotificationsList } from '@/components/notifications-list';
-import { SiteNav } from '@/components/site-nav';
+import { AppShell } from '@/components/app-shell';
 import { loadNotifications } from '@/lib/notifications-data';
 import { loadCurrentProfile } from '@/lib/profile-data';
 
@@ -15,12 +15,11 @@ export default async function NotificationsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SiteNav
-        showLogout
+    <AppShell sampleData={profileData.source === 'mock'}
+        title="알림"
         profile={profileData.profile}
         initialNotificationUnreadCount={notificationData.unreadCount}
-      />
+    >
       <section className="glass-panel rounded-[32px] border border-white/70 p-6 shadow-soft sm:rounded-[40px] sm:p-8">
         <div className="border-b border-slate-200/80 pb-5">
           <div>
@@ -37,6 +36,6 @@ export default async function NotificationsPage() {
           notifications={notificationData.notifications}
         />
       </section>
-    </main>
+    </AppShell>
   );
 }

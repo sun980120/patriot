@@ -3,7 +3,8 @@ import { serverApiFetch } from '@/lib/backend-api';
 import { mockBundle } from '@/lib/mock-data';
 import { toProfile, type MemberSummaryApiResponse } from '@/lib/profile-data';
 import { ACCESS_TOKEN_COOKIE, getBackendBaseUrl } from '@/lib/session';
-import type { ChargeGroup, DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord, Profile } from '@/lib/types';
+import { toPaymentRecord, type PaymentApiResponse } from '@/lib/payment-data';
+import type { ChargeGroup, DashboardBundle, ExpenseEntry, FiscalYear, IncomeEntry, PaymentRecord } from '@/lib/types';
 
 type DashboardApiResponse = {
   profile: MemberSummaryApiResponse;
@@ -20,18 +21,9 @@ type DashboardApiResponse = {
     active: boolean;
   } | null;
   profiles: MemberSummaryApiResponse[];
-  payments: Array<{
-    id: string;
-    fiscalYearId: string;
-    memberId: string;
-    month: number;
-    paid: boolean;
-    chargedAmount: number;
-    appliedGrade: Profile['member_grade'];
-    manualExempt: boolean;
-    exemptionReason: string | null;
-  }>;
+  payments: PaymentApiResponse[];
   incomes: Array<{
+    createdAt?: string | null;
     id: string;
     fiscalYearId: string;
     chargeGroupId: string | null;
@@ -40,6 +32,7 @@ type DashboardApiResponse = {
     memo: string | null;
   }>;
   expenses: Array<{
+    createdAt?: string | null;
     id: string;
     fiscalYearId: string;
     chargeGroupId: string | null;
@@ -97,21 +90,12 @@ function toFiscalYear(row: DashboardApiResponse['fiscalYears'][number]): FiscalY
 }
 
 function toPayment(row: DashboardApiResponse['payments'][number]): PaymentRecord {
-  return {
-    id: row.id,
-    fiscal_year_id: row.fiscalYearId,
-    member_id: row.memberId,
-    month: row.month,
-    paid: row.paid,
-    charged_amount: row.chargedAmount,
-    applied_grade: row.appliedGrade,
-    manual_exempt: row.manualExempt ?? false,
-    exemption_reason: row.exemptionReason ?? null,
-  };
+  return toPaymentRecord(row);
 }
 
 function toIncome(row: DashboardApiResponse['incomes'][number]): IncomeEntry {
   return {
+    created_at: row.createdAt ?? null,
     id: row.id,
     fiscal_year_id: row.fiscalYearId,
     charge_group_id: row.chargeGroupId,
@@ -123,6 +107,7 @@ function toIncome(row: DashboardApiResponse['incomes'][number]): IncomeEntry {
 
 function toExpense(row: DashboardApiResponse['expenses'][number]): ExpenseEntry {
   return {
+    created_at: row.createdAt ?? null,
     id: row.id,
     fiscal_year_id: row.fiscalYearId,
     charge_group_id: row.chargeGroupId,

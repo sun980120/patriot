@@ -57,6 +57,7 @@ export async function loadAuditLogs(limit = 100): Promise<{ ok: true; logs: Audi
 
 export async function loadAuditLogsByFilters(filters: AuditLogFilters): Promise<{ ok: true; logs: AuditLog[] } | { ok: false; message: string }> {
   if (!getBackendBaseUrl()) {
+    if (process.env.ENABLE_MOCK_FALLBACK === 'true') return { ok: true, logs: [] };
     return { ok: false, message: 'PATRIOT_API_BASE_URL 환경변수가 필요합니다.' };
   }
 
@@ -75,6 +76,7 @@ export async function loadAuditLogsByFilters(filters: AuditLogFilters): Promise<
 
 export async function loadAuditLogActors(): Promise<{ ok: true; actors: AuditLogActor[] } | { ok: false; message: string }> {
   if (!getBackendBaseUrl()) {
+    if (process.env.ENABLE_MOCK_FALLBACK === 'true') return { ok: true, actors: [] };
     return { ok: false, message: 'PATRIOT_API_BASE_URL 환경변수가 필요합니다.' };
   }
 

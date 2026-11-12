@@ -1,6 +1,7 @@
 package com.patriot.finance.controller;
 
 import com.patriot.finance.dto.ManualPaymentExemptionRequest;
+import com.patriot.finance.dto.BulkPaymentRequest;
 import com.patriot.finance.dto.PaymentResponse;
 import com.patriot.finance.dto.TogglePaymentRequest;
 import com.patriot.finance.service.PaymentService;
@@ -35,5 +36,10 @@ public class PaymentController {
     @PatchMapping("/exemption")
     public PaymentResponse exemption(@Valid @RequestBody ManualPaymentExemptionRequest request) {
         return paymentService.updateManualExemption(request);
+    }
+
+    @PatchMapping("/bulk-paid")
+    public List<PaymentResponse> bulkPaid(@Valid @RequestBody BulkPaymentRequest request) {
+        return paymentService.markBulkPaid(request);
     }
 }

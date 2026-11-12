@@ -24,11 +24,7 @@ export function SceneTimeline({
     <section className="self-start rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm sm:rounded-[28px] sm:p-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-brand-700">Timeline</p>
-          <h3 className="mt-1 text-lg font-black text-slate-900">장면 구성</h3>
-          <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
-            다음 장면에서 선수를 옮기면 두 장면 사이가 자동으로 애니메이션됩니다.
-          </p>
+          <h2 className="workspace-section-title">장면 구성</h2>
         </div>
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <button
@@ -77,7 +73,7 @@ export function SceneTimeline({
               }`}
             >
               <span className={`block truncate text-[10px] font-black uppercase tracking-[0.14em] sm:text-[11px] sm:tracking-[0.18em] ${selected ? 'text-brand-700' : 'text-slate-400'}`}>
-                Scene {String(index + 1).padStart(2, '0')}
+                장면 {String(index + 1).padStart(2, '0')}
               </span>
               <strong className="mt-1.5 block truncate text-sm text-slate-900 sm:mt-2">
                 {scene.name}

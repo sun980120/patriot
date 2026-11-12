@@ -38,6 +38,7 @@ export type FiscalYear = {
 };
 
 export type PaymentRecord = {
+  updated_at?: string | null;
   id: string;
   fiscal_year_id: string;
   member_id: string;
@@ -50,6 +51,7 @@ export type PaymentRecord = {
 };
 
 export type IncomeEntry = {
+  created_at?: string | null;
   id: string;
   fiscal_year_id: string;
   charge_group_id: string | null;
@@ -59,6 +61,7 @@ export type IncomeEntry = {
 };
 
 export type ExpenseEntry = {
+  created_at?: string | null;
   id: string;
   fiscal_year_id: string;
   charge_group_id: string | null;

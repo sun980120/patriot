@@ -1,10 +1,13 @@
 'use client';
 
+import { PageHeading } from '@/components/ui/page-heading';
+
 import { useState, useTransition } from 'react';
 import { changePasswordAction, checkUsernameAvailabilityAction, updateProfileAction } from '@/app/actions';
 import type { Profile } from '@/lib/types';
 import { useDaumPostcodePopup } from 'react-daum-postcode';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
+import { KeyRound, MapPin, Save, UserRoundCheck } from 'lucide-react';
 
 export function AccountSettingsCard({ profile }: { profile: Profile }) {
   const openPostcodePopup = useDaumPostcodePopup();
@@ -120,11 +123,11 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
           setPasswordMessage('');
         }}
       />
-      <div className="space-y-6">
-      <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+      <div className="workspace-page"><PageHeading title="내 정보" description={`${profile.full_name} · ${profile.member_grade}`} /><div className="account-sections grid items-start gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <section className="workspace-section">
         <div className="border-b border-slate-200/80 pb-4">
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Account</p>
-          <h2 className="mt-2 text-2xl font-black text-slate-900">사용자 정보 변경</h2>
+
+          <h2 className="workspace-section-title">기본 정보</h2>
         </div>
 
         <div className="mt-4 grid gap-3">
@@ -147,7 +150,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
               value={profileForm.username}
               onChange={(event) => setProfileForm((current) => ({ ...current, username: event.target.value }))}
               type="text"
-              placeholder="아이디"
+              placeholder="아이디" aria-label="아이디"
               className={baseInputClass}
             />
             <button
@@ -156,7 +159,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
               disabled={pending}
               className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-slate-700 transition hover:border-brand-300 hover:text-brand-800 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
             >
-              아이디 중복 확인
+              <span className="inline-flex items-center gap-2"><UserRoundCheck className="h-4 w-4" />아이디 중복 확인</span>
             </button>
           </div>
           <div className="space-y-2">
@@ -165,7 +168,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             onClick={handleAddressSearch}
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-700 transition hover:bg-slate-50 sm:text-sm"
           >
-            주소 검색
+            <span className="inline-flex items-center gap-2"><MapPin className="h-4 w-4" />주소 검색</span>
           </button>
 
           <input
@@ -179,7 +182,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             value={detailAddress}
             onChange={(event) => setDetailAddress(event.target.value)}
             type="text"
-            placeholder="상세 주소"
+            placeholder="상세 주소" aria-label="상세 주소"
             className={baseInputClass}
           />
 
@@ -204,6 +207,7 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
                   }))
                 }
                 type="date"
+                aria-label="생년월일"
                 max={new Date().toISOString().split('T')[0]}
                 className={`${baseInputClass} min-h-[54px] appearance-none ${profileForm.birthDate ? 'text-slate-900' : 'text-transparent'}`}
               />
@@ -219,53 +223,53 @@ export function AccountSettingsCard({ profile }: { profile: Profile }) {
             disabled={pending}
             className="rounded-2xl bg-slate-900 px-4 py-3 text-base font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
           >
-            {pending ? '저장 중...' : '사용자 정보 저장'}
+            <span className="inline-flex items-center gap-2"><Save className="h-4 w-4" />{pending ? '저장 중...' : '사용자 정보 저장'}</span>
           </button>
         </div>
       </section>
 
-      <section className="glass-panel rounded-[28px] border border-white/70 p-5 shadow-soft sm:rounded-[32px] sm:p-6">
+      <section className="workspace-section">
         <div className="border-b border-slate-200/80 pb-4">
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Security</p>
-          <h2 className="mt-2 text-2xl font-black text-slate-900">비밀번호 변경</h2>
-          <p className="mt-2 text-sm text-slate-500">현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다.</p>
+
+          <h2 className="workspace-section-title">비밀번호 변경</h2>
+
         </div>
         <div className="mt-4 grid gap-3">
           <input
             value={passwordForm.currentPassword}
             onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))}
             type="password"
-            placeholder="현재 비밀번호"
+            placeholder="현재 비밀번호" aria-label="현재 비밀번호"
             className={baseInputClass}
           />
           <input
             value={passwordForm.newPassword}
             onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))}
             type="password"
-            placeholder="새 비밀번호"
+            placeholder="새 비밀번호" aria-label="새 비밀번호"
             className={baseInputClass}
           />
           <input
             value={passwordForm.confirmPassword}
             onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))}
             type="password"
-            placeholder="새 비밀번호 확인"
+            placeholder="새 비밀번호 확인" aria-label="새 비밀번호 확인"
             className={baseInputClass}
           />
         </div>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-500">관리자가 회원 비밀번호를 초기화하는 경우 기본값은 0000 입니다.</p>
+
           <button
             type="button"
             onClick={handlePasswordSave}
             disabled={pending}
             className="rounded-2xl bg-slate-900 px-4 py-3 text-base font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
           >
-            {pending ? '변경 중...' : '비밀번호 변경'}
+            <span className="inline-flex items-center gap-2"><KeyRound className="h-4 w-4" />{pending ? '변경 중...' : '비밀번호 변경'}</span>
           </button>
         </div>
       </section>
-    </div>
+    </div></div>
     </>
   );
 }

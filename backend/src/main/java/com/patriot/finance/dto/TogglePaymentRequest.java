@@ -8,6 +8,7 @@ import java.util.UUID;
 public record TogglePaymentRequest(
     @NotNull UUID fiscalYearId,
     @NotNull UUID memberId,
-    @Min(1) @Max(12) Integer month
+    @NotNull @Min(1) @Max(12) Integer month,
+    Boolean expectedPaid
 ) {
 }

@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { serverApiFetch } from '@/lib/backend-api';
 import { ACCESS_TOKEN_COOKIE, getBackendBaseUrl } from '@/lib/session';
 import type { ClubEvent } from '@/lib/types';
+import { mockEvents } from '@/lib/mock-events';
 
 type ClubEventApiResponse = {
   id: string;
@@ -59,6 +60,7 @@ function toClubEvent(row: ClubEventApiResponse): ClubEvent {
 
 export async function loadClubEvents(): Promise<{ ok: true; events: ClubEvent[] } | { ok: false; message: string }> {
   if (!getBackendBaseUrl()) {
+    if (process.env.ENABLE_MOCK_FALLBACK === 'true') return { ok: true, events: mockEvents };
     return { ok: false, message: 'PATRIOT_API_BASE_URL 환경변수가 필요합니다.' };
   }
 

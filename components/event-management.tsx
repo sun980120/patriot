@@ -1,5 +1,9 @@
 'use client';
 
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { PageHeading } from '@/components/ui/page-heading';
+import { expandOccurrences, compareOccurrences, parseDateInput, formatDateRange, formatOccurrenceTime, occurrenceKey, toDateInput, type CalendarOccurrence } from '@/lib/calendar-occurrences';
+
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -83,14 +87,6 @@ type ScheduleForm = {
   memo: string;
 };
 
-type CalendarOccurrence = {
-  event: ClubEvent;
-  date: string;
-  startDate: string;
-  endDate: string;
-  startTime: string | null;
-  endTime: string | null;
-};
 
 const today = new Date();
 const PANEL_ANIMATION_MS = 300;
@@ -109,13 +105,13 @@ const emptyForm: ScheduleForm = {
   memo: '',
 };
 
-export function EventManagement({ events, canManage }: { events: ClubEvent[]; canManage: boolean }) {
+export function EventManagement({ events, canManage, initialDate }: { events: ClubEvent[]; canManage: boolean; initialDate?: string }) {
   const router = useRouter();
-  const [monthCursor, setMonthCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [monthCursor, setMonthCursor] = useState(() => { const date = initialDate ? parseDateInput(initialDate) : today; return new Date(date.getFullYear(), date.getMonth(), 1); });
   const [form, setForm] = useState<ScheduleForm>(emptyForm);
-  const [selectedDate, setSelectedDate] = useState(toDateInput(today));
-  const [showSelectedDatePanel, setShowSelectedDatePanel] = useState(false);
-  const [renderSelectedDatePanel, setRenderSelectedDatePanel] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(initialDate ?? toDateInput(today));
+  const [showSelectedDatePanel, setShowSelectedDatePanel] = useState(Boolean(initialDate));
+  const [renderSelectedDatePanel, setRenderSelectedDatePanel] = useState(Boolean(initialDate));
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [selectedOccurrenceKey, setSelectedOccurrenceKey] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -144,6 +140,15 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
 
   const resetFormForDate = (date: string) => {
     setForm({ ...emptyForm, startDate: date, endDate: date });
+  };
+
+  const addSchedule = () => {
+    const visibleMonth = toDateInput(monthCursor).slice(0, 7);
+    const date = renderSelectedDatePanel || selectedDate.startsWith(visibleMonth) ? selectedDate : toDateInput(monthCursor);
+    setSelectedDate(date);
+    resetFormForDate(date);
+    setShowScheduleForm(true);
+    openSelectedDatePanel();
   };
 
   useEffect(() => {
@@ -329,22 +334,14 @@ export function EventManagement({ events, canManage }: { events: ClubEvent[]; ca
   return (
     <>
       <FloatingToast open={Boolean(message)} message={message} tone={toastTone} onClose={() => setMessage('')} />
-      <div className="space-y-8">
-        <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-soft backdrop-blur">
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Calendar</p>
-              <h2 className="mt-2 text-3xl font-black text-slate-900">캘린더</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                {canManage ? '일정을 등록하고 월간 캘린더에서 확인합니다.' : '동호회 일정을 월간 캘린더에서 확인합니다.'}
-              </p>
-            </div>
-          </div>
+      <div className="workspace-page">
+        <section className="workspace-section">
+          <PageHeading title="캘린더" actions={canManage ? <button type="button" onClick={addSchedule} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white"><Plus className="h-4 w-4" />일정 추가</button> : undefined} />
 
           <div className="mt-3 flex items-center justify-center gap-4">
-            <button type="button" onClick={() => moveMonth(-1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">이전</button>
+            <button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달" title="이전 달" className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-600"><ChevronLeft className="h-4 w-4" /></button>
             <span className="min-w-36 text-center text-lg font-black text-slate-900">{monthCursor.getFullYear()}년 {monthCursor.getMonth() + 1}월</span>
-            <button type="button" onClick={() => moveMonth(1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700">다음</button>
+            <button type="button" onClick={() => moveMonth(1)} aria-label="다음 달" title="다음 달" className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-600"><ChevronRight className="h-4 w-4" /></button>
           </div>
 
           <div
@@ -505,7 +502,7 @@ function ScheduleDetailPanel({
   if (!occurrence) {
     return (
       <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-4 text-sm font-semibold text-slate-500">
-        캘린더의 일정명을 클릭하면 상세 내용을 확인할 수 있습니다.
+        선택한 일정이 없습니다.
       </section>
     );
   }
@@ -664,118 +661,4 @@ function weekendTextClass(dayOfWeek: number) {
   if (dayOfWeek === 0) return 'text-rose-600';
   if (dayOfWeek === 6) return 'text-blue-600';
   return 'text-slate-800';
-}
-
-function expandOccurrences(events: ClubEvent[], monthStart: Date, monthEnd: Date) {
-  const occurrences: CalendarOccurrence[] = [];
-  const visibleStart = toDateInput(monthStart);
-  const visibleEnd = toDateInput(monthEnd);
-
-  events.forEach((event) => {
-    const baseStart = event.start_date ?? event.event_date;
-    const baseEnd = event.end_date ?? baseStart;
-    const rangeDays = daysBetween(baseStart, baseEnd);
-    const recurrenceEnd = event.recurrence_until ?? visibleEnd;
-    const excludedStartDates = new Set(event.recurrence_exclusion_dates);
-    let occurrenceStart = baseStart;
-
-    while (occurrenceStart <= visibleEnd && occurrenceStart <= recurrenceEnd) {
-      const occurrenceEnd = addDays(occurrenceStart, rangeDays);
-      if (!excludedStartDates.has(occurrenceStart) && occurrenceEnd >= visibleStart && occurrenceStart <= visibleEnd) {
-        let date = maxDateString(occurrenceStart, visibleStart);
-        const lastDate = minDateString(occurrenceEnd, visibleEnd);
-        while (date <= lastDate) {
-          occurrences.push({
-            event,
-            date,
-            startDate: occurrenceStart,
-            endDate: occurrenceEnd,
-            startTime: event.start_time,
-            endTime: event.end_time,
-          });
-          date = addDays(date, 1);
-        }
-      }
-
-      if (event.recurrence_type === 'NONE') break;
-      occurrenceStart = nextOccurrenceDate(occurrenceStart, event.recurrence_type);
-    }
-  });
-
-  return occurrences;
-}
-
-function compareOccurrences(a: CalendarOccurrence, b: CalendarOccurrence) {
-  const aTime = a.startTime ?? '00:00';
-  const bTime = b.startTime ?? '00:00';
-  if (aTime !== bTime) return aTime.localeCompare(bTime);
-  return a.event.title.localeCompare(b.event.title);
-}
-
-function nextOccurrenceDate(date: string, recurrenceType: ScheduleRecurrenceType) {
-  const next = parseDateInput(date);
-  if (recurrenceType === 'DAILY') next.setDate(next.getDate() + 1);
-  if (recurrenceType === 'WEEKLY') next.setDate(next.getDate() + 7);
-  if (recurrenceType === 'MONTHLY') next.setMonth(next.getMonth() + 1);
-  return toDateInput(next);
-}
-
-function daysBetween(startDate: string, endDate: string) {
-  return Math.max(0, Math.round((parseDateInput(endDate).getTime() - parseDateInput(startDate).getTime()) / 86400000));
-}
-
-function addDays(date: string, days: number) {
-  const next = parseDateInput(date);
-  next.setDate(next.getDate() + days);
-  return toDateInput(next);
-}
-
-function maxDateString(left: string, right: string) {
-  return left > right ? left : right;
-}
-
-function minDateString(left: string, right: string) {
-  return left < right ? left : right;
-}
-
-function parseDateInput(date: string) {
-  const [year, month, day] = date.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function formatDateRange(occurrence: CalendarOccurrence) {
-  return occurrence.startDate === occurrence.endDate ? occurrence.startDate : `${occurrence.startDate}~${occurrence.endDate}`;
-}
-
-function formatOccurrenceTime(occurrence: CalendarOccurrence) {
-  if (!occurrence.startTime || !occurrence.endTime) {
-    return '종일';
-  }
-  const startTime = formatTime(occurrence.startTime);
-  const endTime = formatTime(occurrence.endTime);
-  if (occurrence.startDate === occurrence.endDate) {
-    return `${startTime}-${endTime}`;
-  }
-  if (occurrence.date === occurrence.startDate) {
-    return `${startTime} 시작`;
-  }
-  if (occurrence.date === occurrence.endDate) {
-    return `${endTime} 종료`;
-  }
-  return '진행 중';
-}
-
-function formatTime(time: string) {
-  return time.slice(0, 5);
-}
-
-function occurrenceKey(occurrence: CalendarOccurrence) {
-  return `${occurrence.event.id}-${occurrence.startDate}-${occurrence.date}`;
-}
-
-function toDateInput(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }
