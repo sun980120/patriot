@@ -16,8 +16,8 @@ const icons: Record<string, LucideIcon> = {
   '/admin/audit-logs': History, '/account': Settings,
 };
 
-export function AppShell({ profile, title, children, initialNotificationUnreadCount }: {
-  profile: Profile | null; title: string; children: ReactNode; initialNotificationUnreadCount?: number;
+export function AppShell({ profile, title, children, initialNotificationUnreadCount, sampleData = false }: {
+  profile: Profile | null; title: string; children: ReactNode; initialNotificationUnreadCount?: number; sampleData?: boolean;
 }) {
   const pathname = usePathname();
   const params = useSearchParams();
@@ -31,7 +31,8 @@ export function AppShell({ profile, title, children, initialNotificationUnreadCo
   const role = admin ? '관리자' : profile?.member_grade === '간사' ? '간사' : '회원';
   const active = (href: string) => href === '/dashboard?view=dues'
     ? pathname === '/dashboard' && params.get('view') === 'dues'
-    : href === '/dashboard' ? pathname === '/dashboard' && params.get('view') !== 'dues' : pathname === href;
+    : href === '/dashboard' ? pathname === '/dashboard' && params.get('view') !== 'dues'
+      : href === '/tactics' ? pathname === '/tactics' || pathname.startsWith('/tactics/') : pathname === href;
 
   useEffect(() => {
     const update = () => setDate(new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()));
@@ -89,7 +90,7 @@ export function AppShell({ profile, title, children, initialNotificationUnreadCo
     <div className="min-w-0 md:ml-[60px] min-[1440px]:ml-[184px]" inert={open}>
       <header className="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-200 px-4 sm:px-6 lg:px-7">
         <div className="flex min-w-0 items-center gap-2"><button ref={menuButton} type="button" aria-label="메뉴 열기" aria-expanded={open} onClick={() => setOpen(true)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-slate-50 md:hidden"><Menu className="h-5 w-5" /></button><LayoutDashboard className="hidden h-4 w-4 shrink-0 text-slate-400 md:block" /><span className="truncate text-xs text-slate-500">클럽 / {title}</span></div>
-        <div className="flex shrink-0 items-center gap-2"><time className="mr-1 hidden text-xs text-slate-500 lg:block">{date}</time><NotificationNavLink initialUnreadCount={initialNotificationUnreadCount} variant="quiet" /><span className="hidden rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500 sm:inline">{role}</span><Link href="/account" aria-label="내 정보" title="내 정보">{avatar}</Link></div>
+        <div className="flex shrink-0 items-center gap-2"><time className="mr-1 hidden text-xs text-slate-500 lg:block">{date}</time>{sampleData ? <span className="rounded bg-amber-50 px-1.5 py-1 text-[10px] text-amber-800">샘플 데이터</span> : null}<NotificationNavLink initialUnreadCount={initialNotificationUnreadCount} variant="quiet" /><span className="hidden rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500 sm:inline">{role}</span><Link href="/account" aria-label="내 정보" title="내 정보">{avatar}</Link></div>
       </header>
       <main className="mx-auto min-w-0 max-w-[1480px] px-4 py-6 sm:px-6 lg:px-7">{children}</main>
     </div>

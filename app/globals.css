@@ -28,6 +28,43 @@ body {
   box-shadow: none;
 }
 
+.workspace-page .workspace-section {
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+  padding: 0;
+}
+.workspace-page .workspace-section + .workspace-section {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 24px;
+}
+.workspace-page :is(button, select, textarea, input:not([type="checkbox"]):not([type="radio"]), [class*="rounded-2xl"], [class*="rounded-3xl"], [class*="rounded-["]) {
+  border-radius: 6px;
+}
+.workspace-page :is(.shadow-soft, .shadow-sm, .shadow-lg, [class*="shadow-["]) { box-shadow: none; }
+.workspace-page .font-black { font-weight: 600; }
+.workspace-page [class*="tracking-"] { letter-spacing: 0; }
+.workspace-page :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  min-height: 40px;
+  font-size: 14px;
+}
+.workspace-page .bg-brand-700 { background-color: #047857; }
+.workspace-page .bg-brand-600 { background-color: #059669; }
+.workspace-page .bg-brand-50 { background-color: #ecfdf5; }
+.workspace-page .bg-brand-100 { background-color: #d1fae5; }
+.workspace-page :where(.text-brand-700, .text-brand-800) { color: #047857; }
+.workspace-page .text-brand-900 { color: #064e3b; }
+.workspace-page .hover\:bg-brand-800:hover { background-color: #065f46; }
+.workspace-page .workspace-section-title { font-size: 16px; font-weight: 600; }
+@media (min-width: 1024px) {
+  .workspace-page .account-sections > .workspace-section { border-top: 0; padding-top: 0; }
+}
+@media (pointer: coarse) {
+  .workspace-page:not(.tactics-workspace) :where(button, select, input:not([type="checkbox"]):not([type="radio"])) { min-height: 44px; }
+}
+
 .calendar-month-transition {
   animation: calendar-month-enter 220ms ease-out;
 }
