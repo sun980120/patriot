@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { AccountSettingsCard } from '@/components/account-settings-card';
-import { SiteNav } from '@/components/site-nav';
+import { AppShell } from '@/components/app-shell';
 import { loadDashboardData } from '@/lib/dashboard-data';
 
 export default async function AccountPage() {
@@ -11,9 +11,8 @@ export default async function AccountPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SiteNav showLogout profile={data.bundle.profile} />
+    <AppShell profile={data.bundle.profile} title="내 정보">
       {data.bundle.profile ? <AccountSettingsCard profile={data.bundle.profile} /> : null}
-    </main>
+    </AppShell>
   );
 }

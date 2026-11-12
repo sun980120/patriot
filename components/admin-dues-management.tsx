@@ -22,6 +22,8 @@ type Props = {
   newYearInput: string;
   onNewYearInputChange: (value: string) => void;
   onCreateYear: () => void;
+  initialMonth?: number;
+  initialFilter?: Filter;
 };
 
 const buttonClass = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
@@ -58,10 +60,10 @@ function exportCsv(rows: DuesRow[], year: FiscalYear) {
 
 export function AdminDuesManagement(props: Props) {
   const { year, fiscalYears, members, payments, today, onYearChange, onOpenPayment, onBulkPaid } = props;
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(props.initialMonth ?? null);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
-  const [mobileFilter, setMobileFilter] = useState<Filter>('due');
+  const [filter, setFilter] = useState<Filter>(props.initialFilter ?? 'all');
+  const [mobileFilter, setMobileFilter] = useState<Filter>(props.initialFilter ?? 'due');
   const [view, setView] = useState<'monthly' | 'annual'>('monthly');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmIds, setConfirmIds] = useState<string[] | null>(null);

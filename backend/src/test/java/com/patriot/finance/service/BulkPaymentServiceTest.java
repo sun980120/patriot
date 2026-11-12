@@ -63,11 +63,14 @@ class BulkPaymentServiceTest {
     void repeatedRequestPreservesPaidStateAndHistoricalAmount() {
         MembershipPayment paid = payment(member, 6, true);
         paid.toggle(true, 12_000, MemberGrade.준회원);
+        LocalDateTime recordedAt = LocalDateTime.of(year.getYear(), 6, 5, 12, 0);
+        ReflectionTestUtils.setField(paid, "updatedAt", recordedAt);
         prepare(List.of(member), List.of(paid));
         var result = service.markBulkPaid(request(6, member));
         assertThat(result.getFirst().paid()).isTrue();
         assertThat(result.getFirst().chargedAmount()).isEqualTo(12_000);
         assertThat(result.getFirst().appliedGrade()).isEqualTo(MemberGrade.준회원);
+        assertThat(result.getFirst().updatedAt()).isEqualTo(recordedAt);
         verifyNoInteractions(auditLogService);
     }
 

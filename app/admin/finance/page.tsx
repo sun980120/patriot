@@ -1,20 +1,21 @@
 import { redirect } from 'next/navigation';
 import { AccessDenied } from '@/components/access-denied';
 import { FinanceManagement } from '@/components/finance-management';
-import { SiteNav } from '@/components/site-nav';
+import { AppShell } from '@/components/app-shell';
 import { loadDashboardData } from '@/lib/dashboard-data';
 
-export default async function AdminFinancePage() {
+export default async function AdminFinancePage({ searchParams }: { searchParams?: Promise<{ year?: string }> }) {
   const data = await loadDashboardData();
 
   if (data.mode === 'guest') {
     redirect('/login');
   }
+  const requestedYear = (await searchParams)?.year;
+  const bundle = { ...data.bundle, selectedYear: data.bundle.fiscalYears.find((year) => year.id === requestedYear) ?? data.bundle.selectedYear };
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SiteNav showLogout profile={data.bundle.profile} />
-      {!['admin', 'super_admin'].includes(data.bundle.profile?.app_role ?? '') ? <AccessDenied /> : <FinanceManagement bundle={data.bundle} source={data.source} />}
-    </main>
+    <AppShell profile={data.bundle.profile} title="재정 관리">
+      {!['admin', 'super_admin'].includes(data.bundle.profile?.app_role ?? '') ? <AccessDenied /> : <FinanceManagement key={bundle.selectedYear?.id} bundle={bundle} source={data.source} />}
+    </AppShell>
   );
 }

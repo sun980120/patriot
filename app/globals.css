@@ -20,6 +20,14 @@ body {
   backdrop-filter: blur(14px);
 }
 
+.app-shell .glass-panel {
+  background: #fff;
+  backdrop-filter: none;
+  border-color: #e2e8f0;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
 .calendar-month-transition {
   animation: calendar-month-enter 220ms ease-out;
 }

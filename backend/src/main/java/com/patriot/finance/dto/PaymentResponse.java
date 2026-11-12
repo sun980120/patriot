@@ -2,6 +2,7 @@ package com.patriot.finance.dto;
 
 import com.patriot.finance.domain.enums.MemberGrade;
 import java.util.UUID;
+import java.time.LocalDateTime;
 
 public record PaymentResponse(
     UUID id,
@@ -12,6 +13,7 @@ public record PaymentResponse(
     Integer chargedAmount,
     MemberGrade appliedGrade,
     boolean manualExempt,
-    String exemptionReason
+    String exemptionReason,
+    LocalDateTime updatedAt
 ) {
 }

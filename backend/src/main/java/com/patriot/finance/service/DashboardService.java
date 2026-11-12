@@ -131,7 +131,8 @@ public class DashboardService {
             payment.getChargedAmount(),
             payment.getAppliedGrade(),
             payment.isManualExempt(),
-            payment.getExemptionReason()
+            payment.getExemptionReason(),
+            payment.getUpdatedAt()
         );
     }
 

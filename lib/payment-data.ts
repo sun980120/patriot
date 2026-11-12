@@ -1,6 +1,7 @@
 import type { PaymentRecord, Profile } from '@/lib/types';
 
 export type PaymentApiResponse = {
+  updatedAt?: string | null;
   id: string;
   fiscalYearId: string;
   memberId: string;
@@ -14,6 +15,7 @@ export type PaymentApiResponse = {
 
 export function toPaymentRecord(row: PaymentApiResponse): PaymentRecord {
   return {
+    updated_at: row.updatedAt ?? null,
     id: row.id, fiscal_year_id: row.fiscalYearId, member_id: row.memberId, month: row.month,
     paid: row.paid, charged_amount: row.chargedAmount, applied_grade: row.appliedGrade,
     manual_exempt: row.manualExempt ?? false, exemption_reason: row.exemptionReason ?? null,

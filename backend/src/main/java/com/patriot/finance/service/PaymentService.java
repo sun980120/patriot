@@ -74,7 +74,7 @@ public class PaymentService {
         MemberGrade appliedGrade = member.getMemberGrade();
         int amount = feeFor(appliedGrade);
         payment.toggle(nextPaid, amount, appliedGrade);
-        MembershipPayment savedPayment = paymentRepository.save(payment);
+        MembershipPayment savedPayment = paymentRepository.saveAndFlush(payment);
         auditLogService.record(
             nextPaid ? "MONTHLY_PAYMENT_MARKED_PAID" : "MONTHLY_PAYMENT_MARKED_UNPAID",
             "MEMBERSHIP_PAYMENT",
@@ -111,7 +111,7 @@ public class PaymentService {
             payment.clearManualExemption(member.getMemberGrade());
         }
 
-        MembershipPayment savedPayment = paymentRepository.save(payment);
+        MembershipPayment savedPayment = paymentRepository.saveAndFlush(payment);
         auditLogService.record(
             request.exempt() ? "MONTHLY_PAYMENT_MANUAL_EXEMPTED" : "MONTHLY_PAYMENT_MANUAL_EXEMPTION_CLEARED",
             "MEMBERSHIP_PAYMENT",
@@ -200,7 +200,8 @@ public class PaymentService {
             payment.getChargedAmount(),
             payment.getAppliedGrade(),
             payment.isManualExempt(),
-            payment.getExemptionReason()
+            payment.getExemptionReason(),
+            payment.getUpdatedAt()
         );
     }
 

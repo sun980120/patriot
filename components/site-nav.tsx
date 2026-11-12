@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import type { Route } from 'next';
+import { buildNavLinks } from '@/lib/navigation';
 import { Menu, X } from 'lucide-react';
 import { CLUB_NAME } from '@/lib/constants';
 import { LogoutButton } from '@/components/logout-button';
@@ -11,48 +11,18 @@ import { PwaNotificationPrompt } from '@/components/pwa-notification-prompt';
 import { NotificationNavLink } from '@/components/notification-nav-link';
 import type { Profile } from '@/lib/types';
 
-type NavLink = {
-  href: Route;
-  label: string;
-};
-
 type SiteNavProps = {
   showLogout?: boolean;
   profile?: Profile | null;
   initialNotificationUnreadCount?: number;
 };
 
-function buildLinks(profile: Profile | null): NavLink[] {
-  if (!profile) {
-    return [
-      { href: '/signup', label: '동호회 가입' },
-      { href: '/login', label: '로그인' },
-    ];
-  }
-
-  const adminMode = profile.app_role === 'admin' || profile.app_role === 'super_admin';
-  const links: NavLink[] = [
-    { href: '/dashboard', label: '통합 대시보드' },
-    { href: '/calendar' as Route, label: '캘린더' },
-    { href: '/tactics' as Route, label: '전술 보드' },
-    { href: '/account', label: '사용자 정보 변경' },
-  ];
-
-  if (adminMode) {
-    links.push({ href: '/admin/members', label: '회원 관리' });
-    links.push({ href: '/admin/finance', label: '세입/지출 관리' });
-    links.push({ href: '/admin/audit-logs' as Route, label: '감사 로그' });
-  }
-
-  return links;
-}
-
 export function SiteNav({
   showLogout = false,
   profile = null,
   initialNotificationUnreadCount,
 }: SiteNavProps) {
-  const links = buildLinks(profile);
+  const links = buildNavLinks(profile);
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 

@@ -1,19 +1,23 @@
 import { redirect } from 'next/navigation';
 import { ClubDashboard } from '@/components/club-dashboard';
-import { SiteNav } from '@/components/site-nav';
+import { AppShell } from '@/components/app-shell';
 import { loadDashboardData } from '@/lib/dashboard-data';
+import { loadClubEvents } from '@/lib/event-data';
 
-export default async function DashboardPage() {
-  const data = await loadDashboardData();
+export default async function DashboardPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
+  const [data, events, params] = await Promise.all([loadDashboardData(), loadClubEvents(), searchParams]);
 
   if (data.mode === 'guest') {
     redirect('/login');
   }
 
-  return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SiteNav showLogout profile={data.bundle.profile} />
-      <ClubDashboard initialData={data.bundle} source={data.source} />
-    </main>
-  );
+  const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
+  const view = first(params?.view) === 'dues' ? 'dues' : 'overview';
+  const requestedYear = first(params?.year);
+  const yearId = data.bundle.fiscalYears.find((year) => year.id === requestedYear)?.id;
+  const month = Number(first(params?.month));
+  const filter = first(params?.status) === 'due' ? 'due' : undefined;
+  return <AppShell profile={data.bundle.profile} title={view === 'dues' ? '회비 관리' : '대시보드'}>
+    <ClubDashboard initialData={data.bundle} source={data.source} events={events.ok ? events.events : null} view={view} initialYearId={yearId} initialDuesMonth={month >= 1 && month <= 12 ? month : undefined} initialDuesFilter={filter} />
+  </AppShell>;
 }

@@ -1,26 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
-const ts = require('typescript');
-
-function loadTypescript(relative) {
-  const filename = path.resolve(__dirname, '..', relative);
-  const output = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  const module = { exports: {} };
-  vm.runInNewContext(output, {
-    module, exports: module.exports,
-    require: (name) => {
-      if (name === '@/lib/constants') return loadTypescript('lib/constants.ts');
-      throw new Error(`Unexpected dependency: ${name}`);
-    },
-    Intl, Date,
-  }, { filename });
-  return module.exports;
-}
+const loadTypescript = require('./load-typescript.cjs');
 
 const { getDuesStatus, isFeeExempt, koreanYearMonth, duesAmount } = loadTypescript('lib/dues.ts');
 const year = { id: '2026', year: 2026, visible_months: [5, 6, 7, 8, 9, 10, 11, 12] };

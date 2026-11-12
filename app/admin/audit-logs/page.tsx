@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { AccessDenied } from '@/components/access-denied';
 import { AuditLogList } from '@/components/audit-log-list';
-import { SiteNav } from '@/components/site-nav';
+import { AppShell } from '@/components/app-shell';
 import { buildAuditLogExportPath, loadAuditLogActors, loadAuditLogsByFilters, type AuditLogFilters } from '@/lib/audit-log-data';
 import { loadCurrentProfile } from '@/lib/profile-data';
 
@@ -39,8 +39,7 @@ export default async function AdminAuditLogsPage({ searchParams }: PageProps) {
   const adminMode = profile.app_role === 'admin' || profile.app_role === 'super_admin';
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SiteNav showLogout profile={profile} />
+    <AppShell profile={profile} title="감사 로그">
       {!adminMode ? (
         <AccessDenied />
       ) : auditResult.ok ? (
@@ -56,6 +55,6 @@ export default async function AdminAuditLogsPage({ searchParams }: PageProps) {
           <p className="mt-2 text-sm text-slate-600">{auditResult.message}</p>
         </section>
       )}
-    </main>
+    </AppShell>
   );
 }
