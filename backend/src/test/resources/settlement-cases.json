@@ -1,0 +1,8 @@
+[
+  {"name":"지원금이 실제 사용액보다 큼", "plannedSupport":200000,"paidTotal":60000,"actualCost":100000,"expected":{"appliedSupport":100000,"participantExpense":0,"surplus":60000,"clubExpense":40000,"clubIncome":0,"extraClubExpense":0}},
+  {"name":"참가자 수납 6만원, 실제 사용 10만원", "plannedSupport":40000,"paidTotal":60000,"actualCost":100000,"expected":{"appliedSupport":40000,"participantExpense":60000,"surplus":0,"clubExpense":40000,"clubIncome":0,"extraClubExpense":0}},
+  {"name":"정산잔액 6만원이 회비 순부담 4만원을 의미하지 않는 경우", "plannedSupport":40000,"paidTotal":120000,"actualCost":100000,"expected":{"appliedSupport":40000,"participantExpense":60000,"surplus":60000,"clubExpense":0,"clubIncome":20000,"extraClubExpense":0}},
+  {"name":"예정 지원금을 초과한 회비 부담", "plannedSupport":20000,"paidTotal":30000,"actualCost":100000,"expected":{"appliedSupport":20000,"participantExpense":80000,"surplus":0,"clubExpense":70000,"clubIncome":0,"extraClubExpense":50000}},
+  {"name":"지원금 없이 참가자 수납 초과", "plannedSupport":0,"paidTotal":160000,"actualCost":100000,"expected":{"appliedSupport":0,"participantExpense":100000,"surplus":60000,"clubExpense":0,"clubIncome":60000,"extraClubExpense":0}},
+  {"name":"회비 전액 부담", "plannedSupport":150000,"paidTotal":0,"actualCost":100000,"expected":{"appliedSupport":100000,"participantExpense":0,"surplus":0,"clubExpense":100000,"clubIncome":0,"extraClubExpense":0}}
+]

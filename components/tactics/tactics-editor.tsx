@@ -9,7 +9,6 @@ import {
   Play,
   Plus,
   Save,
-  Sparkles,
   Trash2,
   UsersRound,
   X,
@@ -31,6 +30,7 @@ import { RinkCanvas } from '@/components/tactics/rink-canvas';
 import { SceneTimeline } from '@/components/tactics/scene-timeline';
 import { TacticsToolbar } from '@/components/tactics/tactics-toolbar';
 import { FloatingToast, type ToastTone } from '@/components/ui/floating-toast';
+import { PageHeading } from '@/components/ui/page-heading';
 import {
   TACTICS_LIBRARY_KEY,
   TACTIC_BOARD_OPTIONS,
@@ -846,8 +846,8 @@ export function TacticsEditor({ userName }: { userName: string }) {
 
   if (!project || !currentScene) {
     return (
-      <section className="rounded-[36px] border border-white/70 bg-white/90 p-6 shadow-soft">
-        <div className="h-8 w-48 animate-pulse rounded-full bg-slate-200" />
+      <section className="workspace-page">
+        <PageHeading title="전술 보드" />
         <div className="mt-5 aspect-[2/1] animate-pulse rounded-[28px] bg-slate-200" />
       </section>
     );
@@ -872,24 +872,8 @@ export function TacticsEditor({ userName }: { userName: string }) {
         onClose={() => setToast(emptyToast)}
       />
 
-      <section className="overflow-hidden rounded-[26px] border border-white/70 bg-slate-950 shadow-[0_30px_80px_rgba(15,23,42,0.22)] sm:rounded-[36px]">
-        <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.18),transparent_34%),linear-gradient(135deg,#0f172a,#172033)] px-4 py-5 sm:px-7 sm:py-6">
-          <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-300/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-sky-200">
-                <Sparkles className="h-3.5 w-3.5" />
-                Patriot Playbook
-              </div>
-              <h2 className="mt-4 text-2xl font-black tracking-tight text-white sm:text-4xl">
-                플로어볼 전술 보드
-              </h2>
-              <p className="mt-3 text-sm leading-6 text-slate-300">
-                {userName}님, 선수를 배치하고 장면을 이어 움직임을 설계해 보세요. 저장한 전술은
-                현재 브라우저에서 다시 열 수 있습니다.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(180px,1fr)_auto_auto] xl:min-w-[620px]">
+      <div className="workspace-page tactics-workspace">
+      <PageHeading title="전술 보드" description={userName} actions={<div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:grid-cols-[minmax(180px,240px)_auto_auto]">
               <label className="sr-only" htmlFor="saved-tactic">
                 저장된 전술 선택
               </label>
@@ -897,7 +881,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
                 id="saved-tactic"
                 value={projectIsStored ? project.id : ''}
                 onChange={(event) => openProject(event.target.value)}
-                className="col-span-2 min-h-11 rounded-2xl border border-white/10 bg-white/10 px-4 text-sm font-bold text-white outline-none transition focus:border-sky-300 sm:col-span-1"
+                className="col-span-2 min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-sky-300 sm:col-span-1"
               >
                 <option value="" className="text-slate-900">
                   {library.projects.length ? '저장된 전술 열기' : '저장된 전술 없음'}
@@ -911,7 +895,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
               <button
                 type="button"
                 onClick={saveProject}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-sky-400 px-4 text-sm font-black text-slate-950 transition hover:bg-sky-300"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
               >
                 <Save className="h-4 w-4" />
                 저장
@@ -919,22 +903,20 @@ export function TacticsEditor({ userName }: { userName: string }) {
               <button
                 type="button"
                 onClick={createNewProject}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-bold text-white transition hover:bg-white/10"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
               >
                 <Plus className="h-4 w-4" />
                 새 전술
               </button>
-            </div>
-          </div>
-        </div>
-
+            </div>} />
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950">
         <div className="space-y-3 p-3 sm:space-y-4 sm:p-6">
-          <div className="grid gap-2 rounded-[18px] border border-white/10 bg-white/5 p-2.5 sm:gap-3 sm:rounded-[24px] sm:p-3 lg:grid-cols-[minmax(260px,1fr)_minmax(220px,0.7fr)_auto] lg:items-end">
+          <div className="grid gap-2 rounded-[18px] border border-white/10 bg-white/5 p-2.5 sm:gap-3 sm:rounded-[24px] sm:p-3 lg:grid-cols-[minmax(220px,1fr)_minmax(180px,0.7fr)_auto] lg:items-end">
             <div className="min-w-0">
               <div className="grid gap-3">
                 <label htmlFor="tactic-title" className="block">
                   <span className="block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                    Project title
+                    전술명
                   </span>
                   <input
                     id="tactic-title"
@@ -954,7 +936,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
             </div>
             <fieldset className="min-w-0">
               <legend className="block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                Board
+                코트
               </legend>
               <div className="mt-1 grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-slate-950/45 p-1 sm:gap-1.5 sm:rounded-2xl sm:p-1.5">
                 {TACTIC_BOARD_OPTIONS.map((option) => {
@@ -1275,10 +1257,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
             </div>
           ) : null}
 
-          <p className="px-1 text-[11px] leading-5 text-slate-400 sm:text-xs">
-            선수와 공을 드래그해 위치를 조정할 수 있습니다. 모바일에서는 코트가 화면 폭에
-            맞춰 표시되며, 가로 화면에서 더 정밀하게 편집할 수 있습니다.
-          </p>
+
         </div>
       </section>
 
@@ -1296,8 +1275,8 @@ export function TacticsEditor({ userName }: { userName: string }) {
         <aside className="self-start rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm sm:rounded-[28px] sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-brand-700">Inspector</p>
-              <h3 className="mt-1 text-lg font-black text-slate-900">장면 및 선택 항목</h3>
+
+              <h2 className="workspace-section-title">장면 및 선택 항목</h2>
             </div>
             <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500 sm:px-3 sm:text-xs">
               {currentSceneIndex + 1} / {project.scenes.length}
@@ -1556,6 +1535,7 @@ export function TacticsEditor({ userName }: { userName: string }) {
           </div>
         </div>
       ) : null}
+      </div>
     </>
   );
 }

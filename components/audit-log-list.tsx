@@ -1,3 +1,5 @@
+import { PageHeading } from '@/components/ui/page-heading';
+import { Download, RotateCcw, Search } from 'lucide-react';
 import type { AuditLog, AuditLogActor } from '@/lib/types';
 
 export const ACTION_LABELS: Record<string, string> = {
@@ -60,19 +62,8 @@ type AuditLogListProps = {
 
 export function AuditLogList({ logs, filters, actors, exportHref }: AuditLogListProps) {
   return (
-    <section className="rounded-[28px] border border-white/70 bg-white/90 p-4 shadow-soft sm:rounded-[36px] sm:p-7">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-brand-700">Audit Trail</p>
-          <h2 className="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">감사 로그</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            회원, 회비, 추가 비용의 주요 관리자 변경 이력을 최신순으로 표시합니다.
-          </p>
-        </div>
-        <span className="rounded-full bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
-          최근 {logs.length}건
-        </span>
-      </div>
+    <section className="workspace-page">
+      <PageHeading title="감사 로그" description="회원 · 회비 · 재정 변경 이력" actions={<span className="text-xs text-slate-500">조회 결과 {logs.length}건</span>} />
 
       <form className="mt-6 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_1fr_1fr_1fr]">
         <label className="grid gap-1 text-xs font-black text-slate-500">
@@ -161,18 +152,20 @@ export function AuditLogList({ logs, filters, actors, exportHref }: AuditLogList
             type="submit"
             className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-brand-700 px-4 text-sm font-black text-white transition hover:bg-brand-800"
           >
-            조회
+            <Search className="mr-1 h-4 w-4" />조회
           </button>
           <a
             href={exportHref}
+            download="audit-logs.csv"
             className="inline-flex h-11 flex-1 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-100"
           >
-            CSV
+            <Download className="mr-1 h-4 w-4" />CSV
           </a>
+          <a href="/admin/audit-logs" aria-label="검색 조건 초기화" title="검색 조건 초기화" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500"><RotateCcw className="h-4 w-4" /></a>
         </div>
       </form>
 
-      <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
+      <div className="mt-5 overflow-hidden border-y border-slate-200">
         <div className="hidden grid-cols-[170px_150px_1fr_140px] gap-3 bg-slate-50 px-4 py-3 text-xs font-black text-slate-500 md:grid">
           <span>일시</span>
           <span>작업</span>
@@ -191,8 +184,8 @@ export function AuditLogList({ logs, filters, actors, exportHref }: AuditLogList
                 <time className="font-semibold text-slate-500">{formatDate(log.created_at)}</time>
                 <span className="font-black text-slate-900">{ACTION_LABELS[log.action] ?? log.action}</span>
                 <div className="min-w-0">
-                  <p className="font-bold text-slate-800">{log.target_name ?? TARGET_TYPE_LABELS[log.target_type] ?? log.target_type}</p>
-                  {log.detail ? <p className="mt-1 leading-6 text-slate-500">{log.detail}</p> : null}
+                  <p className="break-words font-semibold text-slate-800">{log.target_name ?? TARGET_TYPE_LABELS[log.target_type] ?? log.target_type}</p>
+                  {log.detail ? <p className="mt-1 break-words leading-5 text-slate-500">{log.detail}</p> : null}
                 </div>
                 <span className="font-semibold text-slate-600">{log.actor_name ?? '-'}</span>
               </li>

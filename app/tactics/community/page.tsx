@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { SiteNav } from '@/components/site-nav';
+import { AppShell } from '@/components/app-shell';
+import { PageHeading } from '@/components/ui/page-heading';
 import { TacticsCommunityList, type TacticCommunityShare } from '@/components/tactics/tactics-community-list';
 import { publicApiFetch } from '@/lib/backend-api';
 import { loadCurrentProfile } from '@/lib/profile-data';
@@ -29,34 +31,11 @@ export default async function TacticsCommunityPage() {
     profile?.app_role === 'super_admin' ||
     profile?.member_grade === '간사';
 
-  return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SiteNav showLogout={Boolean(profile)} profile={profile} />
+  const content = <section className="workspace-page">
+    <PageHeading title="전술 공유 게시판" description={`공유 전술 ${shares.length}개`} actions={<Link href="/tactics" className="inline-flex min-h-10 items-center rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700">내 전술 보드</Link>} />
+    <TacticsCommunityList shares={shares} canModerate={canModerate} />
+  </section>;
+  return profile ? <AppShell sampleData={profileData.mode === 'app' && profileData.source === 'mock'} profile={profile} title="전술 공유">{content}</AppShell>
+    : <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><SiteNav profile={null} />{content}</main>;
 
-      <section className="rounded-[28px] border border-white/70 bg-white/90 p-4 shadow-soft sm:rounded-[36px] sm:p-7">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-brand-700">
-              Patriot Playbook
-            </p>
-            <h1 className="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">
-              전술 보드 공유 게시판
-            </h1>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              공유 시작된 전술만 읽기 전용으로 표시됩니다. 공유 중단된 전술은 게시판과 링크에서
-              더 이상 열리지 않습니다.
-            </p>
-          </div>
-          <Link
-            href="/tactics"
-            className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-brand-700 px-4 text-sm font-black text-white transition hover:bg-brand-800"
-          >
-            내 전술 보드
-          </Link>
-        </div>
-
-        <TacticsCommunityList shares={shares} canModerate={canModerate} />
-      </section>
-    </main>
-  );
 }

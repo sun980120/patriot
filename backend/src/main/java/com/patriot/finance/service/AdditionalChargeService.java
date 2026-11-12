@@ -1,6 +1,7 @@
 package com.patriot.finance.service;
 
 import com.patriot.finance.domain.entity.ChargeGroup;
+import com.patriot.finance.domain.ChargeSettlement;
 import com.patriot.finance.domain.entity.ClubEvent;
 import com.patriot.finance.domain.entity.ExpenseEntry;
 import com.patriot.finance.domain.entity.FiscalYear;
@@ -102,9 +103,13 @@ public class AdditionalChargeService {
 
     @Transactional
     public MemberChargeResponse toggleChargePaid(UUID chargeId, boolean paid) {
+        lockChargeGroup(chargeId);
         MemberCharge charge = memberChargeRepository.findById(chargeId)
             .orElseThrow(() -> new IllegalArgumentException("추가 비용 청구 내역을 찾을 수 없습니다."));
 
+        if (charge.getChargeGroup().isSettlementCompleted()) {
+            throw new IllegalArgumentException("정산 완료된 추가 비용은 정산 수정 후 납부 상태를 변경해 주세요.");
+        }
         charge.markPaid(paid);
         auditLogService.record(
             paid ? "ADDITIONAL_CHARGE_MARKED_PAID" : "ADDITIONAL_CHARGE_MARKED_UNPAID",
@@ -118,6 +123,7 @@ public class AdditionalChargeService {
 
     @Transactional
     public MemberChargeResponse updateChargeAmount(UUID chargeId, Integer amount, String adjustmentReason) {
+        lockChargeGroup(chargeId);
         MemberCharge charge = memberChargeRepository.findById(chargeId)
             .orElseThrow(() -> new IllegalArgumentException("추가 비용 청구 내역을 찾을 수 없습니다."));
 
@@ -138,10 +144,14 @@ public class AdditionalChargeService {
 
     @Transactional
     public ChargeGroupResponse settleSurplus(UUID chargeGroupId, Integer actualCost) {
-        ChargeGroup group = chargeGroupRepository.findById(chargeGroupId)
+        ChargeGroup group = chargeGroupRepository.findForUpdate(chargeGroupId)
             .orElseThrow(() -> new IllegalArgumentException("추가 비용 이벤트를 찾을 수 없습니다."));
 
-        boolean hasUnpaidCharge = memberChargeRepository.findByChargeGroupIdOrderByCreatedAtDesc(group.getId()).stream()
+        if (group.isSettlementCompleted()) {
+            throw new IllegalArgumentException("이미 정산된 항목입니다. 정산 수정 후 다시 진행해 주세요.");
+        }
+        List<MemberCharge> charges = memberChargeRepository.findByChargeGroupIdOrderByCreatedAtDesc(group.getId());
+        boolean hasUnpaidCharge = charges.stream()
             .anyMatch(charge -> charge.getStatus() == AdditionalChargeStatus.UNPAID);
 
         if (hasUnpaidCharge) {
@@ -152,15 +162,15 @@ public class AdditionalChargeService {
             throw new IllegalArgumentException("실제 사용금액을 입력해야 정산을 진행할 수 있습니다.");
         }
 
-        int participantPaidTotal = memberChargeRepository.findByChargeGroupIdOrderByCreatedAtDesc(group.getId()).stream()
+        int participantPaidTotal = charges.stream()
             .filter(charge -> charge.getStatus() == AdditionalChargeStatus.PAID)
             .mapToInt(MemberCharge::getAmount)
             .sum();
 
-        int supportAmount = group.getSupportAmount();
-        int participantExpenseAmount = Math.max(actualCost - supportAmount, 0);
-        int remainingCostForParticipants = participantExpenseAmount;
-        int surplus = participantPaidTotal - remainingCostForParticipants;
+        ChargeSettlement settlement = ChargeSettlement.calculate(group.getSupportAmount(), participantPaidTotal, actualCost);
+        int supportAmount = settlement.appliedSupport();
+        int participantExpenseAmount = settlement.participantExpense();
+        int surplus = settlement.surplus();
 
         expenseEntryRepository.deleteByChargeGroupId(group.getId());
         incomeEntryRepository.deleteByChargeGroupId(group.getId());
@@ -189,9 +199,9 @@ public class AdditionalChargeService {
             incomeEntryRepository.save(IncomeEntry.builder()
                 .fiscalYear(group.getFiscalYear())
                 .chargeGroup(group)
-                .label(group.getTitle() + " 잔액 반영")
+                .label(group.getTitle() + " 정산 잔액(참고)")
                 .amount(surplus)
-                .memo("추가 비용 정산 후 남은 금액")
+                .memo("추가 비용 수납에 포함된 정산 참고 금액으로 총세입에 중복 합산하지 않습니다.")
                 .build());
         }
 
@@ -201,18 +211,18 @@ public class AdditionalChargeService {
             "CHARGE_GROUP",
             group.getId(),
             group.getTitle(),
-            "추가 비용 이벤트를 정산 완료했습니다. 실제 사용금액 " + actualCost + "원, 잔액 " + surplus + "원"
+            "추가 비용을 정산했습니다. 실제 사용 " + actualCost + "원, 참가자 수납 " + participantPaidTotal
+                + "원, 회비 순부담 " + settlement.clubExpense() + "원, 회비 순유입 " + settlement.clubIncome() + "원"
         );
         return toResponse(group);
     }
 
     @Transactional
     public ChargeGroupResponse reopenSettlement(UUID chargeGroupId) {
-        ChargeGroup group = chargeGroupRepository.findById(chargeGroupId)
+        ChargeGroup group = chargeGroupRepository.findForUpdate(chargeGroupId)
             .orElseThrow(() -> new IllegalArgumentException("추가 비용 이벤트를 찾을 수 없습니다."));
 
-        incomeEntryRepository.deleteByChargeGroupId(group.getId());
-        expenseEntryRepository.deleteByChargeGroupId(group.getId());
+        // Keep the last confirmed ledger until the next settlement replaces it atomically.
         group.reopenSettlement();
         auditLogService.record(
             "ADDITIONAL_CHARGE_SETTLEMENT_REOPENED",
@@ -227,7 +237,7 @@ public class AdditionalChargeService {
 
     @Transactional
     public void deleteChargeGroup(UUID chargeGroupId) {
-        ChargeGroup group = chargeGroupRepository.findById(chargeGroupId)
+        ChargeGroup group = chargeGroupRepository.findForUpdate(chargeGroupId)
             .orElseThrow(() -> new IllegalArgumentException("추가 비용 이벤트를 찾을 수 없습니다."));
 
         memberChargeRepository.deleteByChargeGroupId(group.getId());
@@ -243,6 +253,13 @@ public class AdditionalChargeService {
         chargeGroupRepository.delete(group);
     }
 
+    private void lockChargeGroup(UUID chargeId) {
+        UUID groupId = memberChargeRepository.findGroupId(chargeId)
+            .orElseThrow(() -> new IllegalArgumentException("추가 비용 청구 내역을 찾을 수 없습니다."));
+        chargeGroupRepository.findForUpdate(groupId)
+            .orElseThrow(() -> new IllegalArgumentException("추가 비용 이벤트를 찾을 수 없습니다."));
+    }
+
     private ChargeGroupResponse toResponse(ChargeGroup group) {
         List<MemberChargeResponse> participantCharges = memberChargeRepository.findByChargeGroupIdOrderByCreatedAtDesc(group.getId()).stream()
             .map(this::toChargeResponse)
@@ -254,7 +271,7 @@ public class AdditionalChargeService {
             .sum();
         int surplusAmount = group.getActualCost() == null
             ? 0
-            : Math.max(participantPaidTotal - Math.max(group.getActualCost() - group.getSupportAmount(), 0), 0);
+            : ChargeSettlement.calculate(group.getSupportAmount(), participantPaidTotal, group.getActualCost()).surplus();
 
         return new ChargeGroupResponse(
             group.getId(),
