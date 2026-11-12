@@ -82,6 +82,7 @@ export function dashboardSnapshot(bundle: DashboardBundle, year: FiscalYear, mem
     unpaidAmount: debtors.reduce((sum, row) => sum + row.dueAmount, 0), unpaidMonths: periods.length,
     month, monthly: { paid, due: due.length, dueAmount: due.reduce((sum, item) => sum + duesAmount(item.member), 0), future, exemptions, target, rate: target ? paid / target * 100 : null },
     additional, additionalAmount: additional.reduce((sum, item) => sum + item.charge.amount, 0), readyGroups,
+    hasOutstanding: Boolean(today && (periods.length > 0 || additional.length > 0)),
     ownRow: rows.find(row => row.member.id === bundle.profile?.id), ownPaidCount: ownPayments.length,
     ownPaidAmount: ownPayments.reduce((sum, payment) => sum + payment.charged_amount, 0),
   };

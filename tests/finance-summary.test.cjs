@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const load = require('./load-typescript.cjs');
-const { summarizeFinance } = load('lib/finance-summary.ts');
+const { clubLedgerEntries, summarizeFinance } = load('lib/finance-summary.ts');
 const { calculateChargeSettlement } = load('lib/charge-settlement.ts');
 const { mockBundle } = load('lib/mock-data.ts');
 
@@ -77,4 +77,39 @@ test('100000 spent and 60000 received reduce club funds by exactly 40000', () =>
   assert.equal(result.cumulative.totalIncome, 60000);
   assert.equal(result.cumulative.totalExpense, 100000);
   assert.equal(result.cumulative.balance, -40000);
+});
+
+test('public club ledger reconciles with selected-year income and expense totals', () => {
+  for (const year of mockBundle.fiscalYears) {
+    const ledger = clubLedgerEntries(mockBundle, year.id);
+    const totals = summarizeFinance(mockBundle, year.id).annual;
+    assert.equal(ledger.incomes.reduce((sum, item) => sum + item.amount, 0), totals.totalIncome);
+    assert.equal(ledger.expenses.reduce((sum, item) => sum + item.amount, 0), totals.totalExpense);
+  }
+});
+test('membership receipts are grouped by month without exposing member names or IDs', () => {
+  const data = { ...empty(), payments: [
+    { member_id:'private-one', full_name:'비공개 회원', fiscal_year_id:'a', month:11, paid:true, charged_amount:12000, updated_at:'2026-11-01T12:00:00' },
+    { member_id:'private-two', fiscal_year_id:'a', month:11, paid:true, charged_amount:10000, updated_at:'2026-11-03T12:00:00' },
+    { member_id:'private-three', fiscal_year_id:'a', month:11, paid:false, charged_amount:20000 },
+  ] };
+  const ledger = clubLedgerEntries(data,'a');
+  assert.equal(ledger.incomes.length,1);
+  assert.equal(ledger.incomes[0].amount,22000);
+  assert.equal(ledger.incomes[0].recordedAt,'2026-11-03T12:00:00');
+  assert.equal(JSON.stringify(ledger).includes('private'),false);
+  assert.equal(JSON.stringify(ledger).includes('비공개'),false);
+});
+test('club ledger excludes reference surplus and preserves expenses and advance receipts', () => {
+  const data = { ...empty(), payments:[{ fiscal_year_id:'a', month:12, paid:true, charged_amount:10000 }],
+    chargeGroups:[{ id:'g', title:'대회비', fiscal_year_id:'a', participant_paid_total:60000, participant_charges:[{ status:'PAID', paid_at:null }] }],
+    incomes:[{ id:'ref', fiscal_year_id:'a', charge_group_id:'g', amount:60000, label:'참고 잔액' }],
+    expenses:[{ id:'cost', fiscal_year_id:'a', charge_group_id:'g', amount:100000, label:'실제 지출' }],
+  };
+  const ledger = clubLedgerEntries(data,'a');
+  assert.equal(ledger.incomes.reduce((sum,item)=>sum+item.amount,0),70000);
+  assert.equal(ledger.incomes.some(item=>item.label==='참고 잔액'),false);
+  assert.equal(ledger.expenses[0].amount,100000);
+  assert.equal(ledger.incomes.every(item=>item.recordedAt===null),true);
+  assert.equal(clubLedgerEntries(data,'other').incomes.length,0);
 });

@@ -1,7 +1,9 @@
 'use client';
 
-import { Pause, Play } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { Pause, Play, Swords } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { PageHeading } from '@/components/ui/page-heading';
 import { RinkCanvas } from '@/components/tactics/rink-canvas';
 import {
   type TacticObject,
@@ -18,7 +20,7 @@ type PlaybackPreview = {
   progress: number;
 };
 
-export function TacticShareViewer({ project }: { project: TacticProject }) {
+export function TacticShareViewer({ project, description }: { project: TacticProject; description?: string }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const [selectedSceneId, setSelectedSceneId] = useState(project.scenes[0].id);
@@ -26,6 +28,10 @@ export function TacticShareViewer({ project }: { project: TacticProject }) {
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [preview, setPreview] = useState<PlaybackPreview | null>(null);
+
+  useEffect(() => () => {
+    if (animationFrameRef.current !== null) window.cancelAnimationFrame(animationFrameRef.current);
+  }, []);
 
   const currentScene = useMemo(
     () => project.scenes.find((scene) => scene.id === selectedSceneId) ?? project.scenes[0],
@@ -92,27 +98,25 @@ export function TacticShareViewer({ project }: { project: TacticProject }) {
   const progress = preview ? Math.round(preview.progress * 100) : 0;
 
   return (
-    <section className="overflow-hidden rounded-[28px] border border-white/70 bg-slate-950 shadow-[0_30px_80px_rgba(15,23,42,0.22)] sm:rounded-[36px]">
-      <div className="border-b border-white/10 bg-[linear-gradient(135deg,#0f172a,#172033)] px-4 py-5 sm:px-7 sm:py-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-200">Shared Playbook</p>
-            <h1 className="mt-2 text-2xl font-black text-white sm:text-4xl">{project.title}</h1>
-          </div>
+    <div className="min-w-0 [&_h1]:break-words">
+      <PageHeading title={project.title} description={description} actions={<Link href="/tactics" className="inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Swords className="h-4 w-4" />내 전술 보드</Link>} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-slate-200 py-3">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500"><span className="rounded bg-slate-100 px-2 py-1 font-medium text-slate-600">읽기 전용</span><span>{project.boardType === 'board-2' ? '전술 보드 2' : '전술 보드 1'}</span><span>총 {project.scenes.length}개 장면</span></div>
           <button
             type="button"
             disabled={project.scenes.length < 2}
             onClick={isPlaying ? stopPlayback : play}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-sky-400 px-4 text-sm font-black text-slate-950 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label={isPlaying ? '재생 정지' : '전체 재생'}
+            title={project.scenes.length < 2 ? '재생하려면 2개 이상의 장면이 필요합니다' : isPlaying ? '재생 정지' : '전체 재생'}
+            aria-pressed={isPlaying}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            {isPlaying ? '정지' : '애니메이션'}
+            {isPlaying ? <Pause className="h-4 w-4" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
           </button>
-        </div>
       </div>
 
-      <div className="space-y-4 p-3 sm:p-6">
-        <div className="rounded-[22px] border border-sky-200/20 bg-sky-950/30 p-1.5 sm:rounded-[30px] sm:p-3">
+      <div className="space-y-5">
+        <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-950">
           <RinkCanvas
             svgRef={svgRef}
             objects={displayObjects}
@@ -129,37 +133,44 @@ export function TacticShareViewer({ project }: { project: TacticProject }) {
           />
         </div>
 
-        {preview ? (
-          <div className="h-2 overflow-hidden rounded-full bg-white/15" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
-            <div className="h-full rounded-full bg-sky-400" style={{ width: `${progress}%` }} />
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500"><strong className="min-w-0 break-words text-sm font-semibold text-slate-900">{currentScene.name}</strong><span className="shrink-0 tabular-nums">장면 {project.scenes.findIndex(scene => scene.id === activeSceneId) + 1} / {project.scenes.length}</span></div>
+          <div className="h-1 overflow-hidden bg-slate-100" role="progressbar" aria-label="장면 전환 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+            <div className="h-full bg-emerald-600" style={{ width: `${progress}%` }} />
           </div>
-        ) : null}
+        </div>
 
+        <section aria-label="장면 목록" className="border-t border-slate-200 pt-4">
+        <h2 className="mb-3 text-base font-semibold text-slate-900">장면</h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
           {project.scenes.map((scene, index) => (
             <button
               key={scene.id}
               type="button"
               disabled={isPlaying}
+              aria-pressed={scene.id === activeSceneId}
+              aria-label={`장면 ${index + 1}: ${scene.name}`}
+              title={scene.name}
               onClick={() => {
                 setSelectedSceneId(scene.id);
                 setSelectedObjectId(null);
                 setSelectedPathId(null);
               }}
-              className={`rounded-[18px] border px-3 py-3 text-left transition disabled:cursor-wait ${
+              className={`min-h-20 min-w-0 rounded-md border px-3 py-3 text-left transition disabled:cursor-wait ${
                 scene.id === activeSceneId
-                  ? 'border-sky-300 bg-sky-400/10 text-white'
-                  : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                  ? 'border-emerald-600 bg-emerald-50 text-emerald-900'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
               }`}
             >
-              <span className="block truncate text-[11px] font-black uppercase tracking-[0.14em]">
-                Scene {String(index + 1).padStart(2, '0')}
+              <span className="block text-xs">
+                장면 {String(index + 1).padStart(2, '0')}
               </span>
-              <strong className="mt-1.5 block truncate text-sm">{scene.name}</strong>
+              <strong className="mt-1.5 line-clamp-2 break-words text-sm font-semibold">{scene.name}</strong>
             </button>
           ))}
         </div>
+        </section>
       </div>
-    </section>
+    </div>
   );
 }
