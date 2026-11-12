@@ -202,3 +202,16 @@ test('empty and hydrating dashboards do not invent overdue amounts', () => {
   assert.equal(empty.monthly.target,0);
   assert.equal(empty.monthly.rate,null);
 });
+test('member dashboard only prioritizes outstanding personal dues or charges', () => {
+  const payments = year.visible_months.map(month => ({ member_id:member.id, fiscal_year_id:year.id, month, paid:month<=11, charged_amount:month<=11?20000:0 }));
+  const data = snapshotBundle({ payments });
+  assert.equal(dashboardSnapshot(data,year,[member],false,now).hasOutstanding,false);
+  assert.equal(dashboardSnapshot(snapshotBundle(),year,[member],false,null).hasOutstanding,false);
+  const withOldDebt = { ...data, payments:payments.filter(item=>item.month!==5) };
+  assert.equal(dashboardSnapshot(withOldDebt,year,[member],false,now).hasOutstanding,true);
+  const withCharge = { ...data, chargeGroups:[{ participant_charges:[{ member_id:member.id, status:'UNPAID', amount:30000 }] }] };
+  const result = dashboardSnapshot(withCharge,year,[member],false,now);
+  assert.equal(result.unpaidAmount,0);
+  assert.equal(result.additionalAmount,30000);
+  assert.equal(result.hasOutstanding,true);
+});
